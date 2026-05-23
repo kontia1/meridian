@@ -423,6 +423,7 @@ const toolMap = {
       minAgeBeforeYieldCheck: ["management", "minAgeBeforeYieldCheck"],
       // dump detection
       dumpDetectionEnabled:  ["management", "dumpDetectionEnabled"],
+      dumpMinSignals:        ["management", "dumpMinSignals"],
       dumpCheckIntervalSec:  ["management", "dumpCheckIntervalSec"],
       dumpPriceDrop5mPct:    ["management", "dumpPriceDrop5mPct"],
       dumpLpRemovalPct:      ["management", "dumpLpRemovalPct"],

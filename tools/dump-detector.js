@@ -175,8 +175,9 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
   }
 
   // ── Result ─────────────────────────────────────────────────────────────
-  if (signals.length === 0) {
-    return { isDump: false, reason: "no dump signals", signals: [], metrics };
+  const minSignals = cfg.dumpMinSignals ?? 1;
+  if (signals.length < minSignals) {
+    return { isDump: false, reason: `only ${signals.length}/${minSignals} dump signals`, signals, metrics };
   }
 
   const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";

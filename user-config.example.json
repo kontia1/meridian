@@ -75,6 +75,7 @@
   "healthCheckIntervalMin": 60,
 
   "dumpDetectionEnabled": true,
+  "dumpMinSignals": 1,
   "dumpCheckIntervalSec": 60,
   "dumpPriceDrop5mPct": -15,
   "dumpLpRemovalPct": -30,

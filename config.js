@@ -198,6 +198,9 @@ export const config = {
     // ── Dump Detection ───────────────────────────────────────────────────
     // Semua setting bisa diatur di user-config.json
     dumpDetectionEnabled:  u.dumpDetectionEnabled  ?? true,
+    // Berapa sinyal minimum yang harus aktif sekaligus untuk trigger close
+    // Default 1 = cukup 1 sinyal. Set 2 untuk lebih konservatif.
+    dumpMinSignals:        u.dumpMinSignals        ?? 1,
     // Seberapa sering cek dump (detik). Set di user-config.json: "dumpCheckIntervalSec": 60
     dumpCheckIntervalSec:  u.dumpCheckIntervalSec  ?? 60,
     // Threshold harga turun (%) dalam window 5m. Default -15%.

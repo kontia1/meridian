@@ -74,6 +74,16 @@
   "screeningIntervalMin": 30,
   "healthCheckIntervalMin": 60,
 
+  "dumpDetectionEnabled": true,
+  "dumpCheckIntervalSec": 60,
+  "dumpPriceDrop5mPct": -15,
+  "dumpLpRemovalPct": -30,
+  "dumpSellBuyRatio": 3,
+  "dumpSellPctOfTvl": 15,
+  "dumpMcapDropPct": -25,
+  "dumpVolSpike5mPct": 20,
+  "dumpVolSpikePriceMinPct": -5,
+
   "temperature": 0.373,
   "maxTokens": 4096,
   "maxSteps": 20,

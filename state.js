@@ -95,6 +95,9 @@ export function trackPosition({
     closed: false,
     closed_at: null,
     notes: [],
+    // Dump detection baselines (set right after deploy via setDeployBaseline)
+    tvl_at_deploy:  null,
+    mcap_at_deploy: null,
     peak_pnl_pct: 0,
     pending_peak_pnl_pct: null,
     pending_peak_started_at: null,
@@ -109,6 +112,24 @@ export function trackPosition({
   pushEvent(state, { action: "deploy", position, pool_name: pool_name || pool });
   save(state);
   log("state", `Tracked new position: ${position} in pool ${pool}`);
+}
+
+/**
+ * Store TVL and MC baselines for dump detection.
+ * Called fire-and-forget after deploy — separate from trackPosition so
+ * we don't block the deploy flow on extra API calls.
+ *
+ * @param {string} position_address
+ * @param {{ tvl: number|null, mcap: number|null }} baseline
+ */
+export function setDeployBaseline(position_address, { tvl, mcap }) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return;
+  if (tvl  != null) pos.tvl_at_deploy  = tvl;
+  if (mcap != null) pos.mcap_at_deploy = mcap;
+  save(state);
+  log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} MC=$${Math.round(mcap ?? 0).toLocaleString()}`);
 }
 
 /**

@@ -12,7 +12,8 @@ import {
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction } from "../state.js";
+import { setPositionInstruction, setDeployBaseline, getTrackedPosition } from "../state.js";
+import { fetchDumpContext, checkDumpSignals } from "./dump-detector.js";
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
@@ -266,6 +267,29 @@ const toolMap = {
   swap_token: swapToken,
   get_top_lpers: studyTopLPers,
   study_top_lpers: studyTopLPers,
+  check_dump_risk: async ({ pool_address, position_address, base_mint }) => {
+    const trackedPos = position_address ? (getTrackedPosition(position_address) || {}) : {};
+    // If base_mint not provided, try to find it from tracked position or pool
+    const mint = base_mint || trackedPos.base_mint || null;
+    const { poolDetail, tokenInfo } = await fetchDumpContext(pool_address, mint);
+    const result = checkDumpSignals(
+      { ...trackedPos, pool: pool_address },
+      poolDetail,
+      tokenInfo,
+      config.management,
+    );
+    return {
+      ...result,
+      pool_address,
+      price_change_5m: poolDetail?.price_change_pct ?? null,
+      tvl:             poolDetail?.tvl ?? null,
+      volume_window:   poolDetail?.volume_window ?? null,
+      price:           poolDetail?.price ?? null,
+      mcap:            tokenInfo?.mcap ?? null,
+      sell_vol_1h:     tokenInfo?.stats_1h?.sell_vol ?? null,
+      buy_vol_1h:      tokenInfo?.stats_1h?.buy_vol ?? null,
+    };
+  },
   set_position_note: ({ position_address, instruction }) => {
     const ok = setPositionInstruction(position_address, instruction || null);
     if (!ok) return { error: `Position ${position_address} not found in state` };
@@ -397,6 +421,16 @@ const toolMap = {
       gasReserve: ["management", "gasReserve"],
       positionSizePct: ["management", "positionSizePct"],
       minAgeBeforeYieldCheck: ["management", "minAgeBeforeYieldCheck"],
+      // dump detection
+      dumpDetectionEnabled:  ["management", "dumpDetectionEnabled"],
+      dumpCheckIntervalSec:  ["management", "dumpCheckIntervalSec"],
+      dumpPriceDrop5mPct:    ["management", "dumpPriceDrop5mPct"],
+      dumpLpRemovalPct:      ["management", "dumpLpRemovalPct"],
+      dumpSellBuyRatio:      ["management", "dumpSellBuyRatio"],
+      dumpSellPctOfTvl:      ["management", "dumpSellPctOfTvl"],
+      dumpMcapDropPct:       ["management", "dumpMcapDropPct"],
+      dumpVolSpike5mPct:        ["management", "dumpVolSpike5mPct"],
+      dumpVolSpikePriceMinPct:  ["management", "dumpVolSpikePriceMinPct"],
       // risk
       maxPositions: ["risk", "maxPositions"],
       maxDeployAmount: ["risk", "maxDeployAmount"],
@@ -594,11 +628,15 @@ const toolMap = {
       fs.writeFileSync(GMGN_CONFIG_PATH, JSON.stringify(gmgnConfig, null, 2));
     }
 
-    // Restart cron jobs if intervals changed
-    const intervalChanged = applied.managementIntervalMin != null || applied.screeningIntervalMin != null;
+    // Restart cron jobs if intervals or dump detection settings changed
+    const intervalChanged =
+      applied.managementIntervalMin  != null ||
+      applied.screeningIntervalMin   != null ||
+      applied.dumpCheckIntervalSec   != null ||
+      applied.dumpDetectionEnabled   != null;
     if (intervalChanged && _cronRestarter) {
       _cronRestarter();
-      log("config", `Cron restarted — management: ${config.schedule.managementIntervalMin}m, screening: ${config.schedule.screeningIntervalMin}m`);
+      log("config", `Cron restarted — management: ${config.schedule.managementIntervalMin}m, screening: ${config.schedule.screeningIntervalMin}m, dump check: ${config.management.dumpDetectionEnabled ? "enabled (inline)" : "disabled"}`);
     }
 
     // Save as a lesson — but skip ephemeral per-deploy interval changes
@@ -677,6 +715,17 @@ export async function executeTool(name, args) {
         notifySwap({ inputSymbol: args.input_mint?.slice(0, 8), outputSymbol: args.output_mint === "So11111111111111111111111111111111111111112" || args.output_mint === "SOL" ? "SOL" : args.output_mint?.slice(0, 8), amountIn: result.amount_in, amountOut: result.amount_out, tx: result.tx }).catch(() => {});
       } else if (name === "deploy_position") {
         notifyDeploy({ pair: result.pool_name || args.pool_name || args.pool_address?.slice(0, 8), amountSol: args.amount_y ?? args.amount_sol ?? 0, position: result.position, tx: result.txs?.[0] ?? result.tx, priceRange: result.price_range, rangeCoverage: result.range_coverage, binStep: result.bin_step, baseFee: result.base_fee }).catch(() => {});
+        // Fire-and-forget: record TVL + MC baseline for dump detection
+        if (result.position && (args.pool_address || result.pool)) {
+          fetchDumpContext(args.pool_address || result.pool, result.base_mint || args.base_mint || null)
+            .then(({ poolDetail, tokenInfo }) => {
+              setDeployBaseline(result.position, {
+                tvl:  poolDetail?.tvl ?? null,
+                mcap: tokenInfo?.mcap ?? null,
+              });
+            })
+            .catch(() => {}); // non-fatal
+        }
       } else if (name === "close_position") {
         notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0 }).catch(() => {});
         if (process.env.MERIDIAN_PROFILE === "autoresearch" && config.autoresearch?.runId) {

@@ -36,6 +36,7 @@ import { stageSignals } from "./signal-tracker.js";
 import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
+import { fetchDumpContext, checkDumpSignals } from "./tools/dump-detector.js";
 
 const entrypointPath = process.env.pm_exec_path || process.argv[1];
 const isMain = entrypointPath
@@ -250,7 +251,8 @@ async function maybeRunMissedBriefing() {
 
 function stopCronJobs() {
   for (const task of _cronTasks) task.stop();
-  if (_cronTasks._pnlPollInterval) clearInterval(_cronTasks._pnlPollInterval);
+  if (_cronTasks._pnlPollInterval)   clearInterval(_cronTasks._pnlPollInterval);
+  if (_cronTasks._dumpCheckInterval) clearInterval(_cronTasks._dumpCheckInterval);
   _cronTasks = [];
 }
 
@@ -912,10 +914,48 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }
   }, 30_000);
 
+  // ── Dump Detection ──────────────────────────────────────────────────
+  // Interval terpisah, bisa diatur di user-config.json: "dumpCheckIntervalSec": 60
+  let _dumpCheckBusy = false;
+  const dumpCheckIntervalMs = Math.max(10, config.management.dumpCheckIntervalSec) * 1000;
+  const dumpCheckInterval = config.management.dumpDetectionEnabled
+    ? setInterval(async () => {
+        if (_managementBusy || _dumpCheckBusy) return;
+        const openPositions = getTrackedPositions(true);
+        if (openPositions.length === 0) return;
+        _dumpCheckBusy = true;
+        try {
+          for (const trackedPos of openPositions) {
+            if (!trackedPos.pool) continue;
+            const { poolDetail, tokenInfo } = await fetchDumpContext(
+              trackedPos.pool,
+              trackedPos.base_mint || null,
+            ).catch(() => ({ poolDetail: null, tokenInfo: null }));
+            const { isDump, reason } = checkDumpSignals(
+              trackedPos, poolDetail, tokenInfo, config.management,
+            );
+            if (!isDump) continue;
+            log("dump_warn", reason);
+            if (telegramEnabled()) sendMessage(`⚠️ ${reason}`).catch(() => {});
+            _pollTriggeredAt = 0;
+            runManagementCycle({ silent: true }).catch((e) =>
+              log("cron_error", `Dump-triggered management failed: ${e.message}`)
+            );
+            break;
+          }
+        } finally {
+          _dumpCheckBusy = false;
+        }
+      }, dumpCheckIntervalMs)
+    : null;
+
   _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
-  // Store interval ref so stopCronJobs can clear it
-  _cronTasks._pnlPollInterval = pnlPollInterval;
-  log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m`);
+  _cronTasks._pnlPollInterval  = pnlPollInterval;
+  _cronTasks._dumpCheckInterval = dumpCheckInterval;
+  const dumpStatus = config.management.dumpDetectionEnabled
+    ? `dump check every ${config.management.dumpCheckIntervalSec}s`
+    : "dump check disabled";
+  log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m, ${dumpStatus}`);
 }
 
 // ═══════════════════════════════════════════

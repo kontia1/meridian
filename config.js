@@ -194,6 +194,30 @@ export const config = {
     solMode:               u.solMode               ?? false,
     // Minimum floor for computeDeployAmount; autoresearch may set this lower
     minDeployAmountSol:    u.minDeployAmountSol    ?? 0.1,
+
+    // ── Dump Detection ───────────────────────────────────────────────────
+    // Semua setting bisa diatur di user-config.json
+    dumpDetectionEnabled:  u.dumpDetectionEnabled  ?? true,
+    // Seberapa sering cek dump (detik). Set di user-config.json: "dumpCheckIntervalSec": 60
+    dumpCheckIntervalSec:  u.dumpCheckIntervalSec  ?? 60,
+    // Threshold harga turun (%) dalam window 5m. Default -15%.
+    dumpPriceDrop5mPct:    u.dumpPriceDrop5mPct    ?? -15,
+    // Threshold TVL turun (%) vs saat deploy. Default -30% (LP besar keluar).
+    dumpLpRemovalPct:      u.dumpLpRemovalPct      ?? -30,
+    // Threshold rasio sell/buy volume (1h). Default 5× (sell 5x lebih besar dari buy).
+    // Rasio sell/buy — harus >= ini DAN sell_vol >= dumpSellPctOfTvl (dua-duanya wajib)
+    dumpSellBuyRatio:      u.dumpSellBuyRatio      ?? 3,
+    // Sell volume 1h harus >= X% dari TVL pool saat ini — normalisasi ke ukuran pool
+    // Cegah false positive: 1 whale sell besar di pool TVL besar tidak auto trigger
+    dumpSellPctOfTvl:      u.dumpSellPctOfTvl      ?? 15,
+    // Threshold MC turun (%) vs saat deploy. Default -25%.
+    dumpMcapDropPct:       u.dumpMcapDropPct       ?? -25,
+    // Volume 5m >= X% dari TVL DAN harga turun → dev dump / whale dump 1 tx
+    // Menangkap dump mendadak yg lolos sinyal sell pressure (window 1h terlalu lebar)
+    dumpVolSpike5mPct:        u.dumpVolSpike5mPct        ?? 20,
+    // Harga harus turun minimal X% (bukan sembarang negatif) untuk sinyal volume spike
+    // Cegah false positive di pool ramai yang harganya naik-turun kecil normal
+    dumpVolSpikePriceMinPct:  u.dumpVolSpikePriceMinPct  ?? -5,
   },
 
   // ─── Strategy Mapping ───────────────────

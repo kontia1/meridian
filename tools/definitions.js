@@ -203,6 +203,32 @@ WARNING: This executes a real on-chain transaction. Check DRY_RUN mode.`,
   // ═══════════════════════════════════════════
   //  POSITION MANAGEMENT TOOLS
   // ═══════════════════════════════════════════
+
+  {
+    type: "function",
+    function: {
+      name: "check_dump_risk",
+      description: `Cek apakah pool sedang mengalami dump mendadak.
+Mengecek 4 sinyal sekaligus:
+  1. Harga turun cepat (5m price change)
+  2. LP besar keluar (TVL turun vs saat deploy)
+  3. Tekanan jual tinggi (sell volume / buy volume 1h)
+  4. Market cap turun (vs baseline saat deploy)
+
+Gunakan ini saat curiga ada dump, atau sebelum memutuskan menutup posisi.
+Semua threshold bisa dikonfigurasi via user-config.json (dumpPriceDrop5mPct, dumpLpRemovalPct, dumpSellBuyRatio, dumpMcapDropPct).`,
+      parameters: {
+        type: "object",
+        properties: {
+          pool_address:   { type: "string", description: "Alamat pool DLMM" },
+          position_address: { type: "string", description: "Alamat posisi (opsional, untuk lookup baseline)" },
+          base_mint:      { type: "string", description: "Mint token base (opsional, untuk cek sell pressure dan MC)" },
+        },
+        required: ["pool_address"]
+      }
+    }
+  },
+
   {
     type: "function",
     function: {

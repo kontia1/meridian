@@ -88,6 +88,15 @@ Sets defined in `agent.js:6-7`. If you add a tool, also add it to the relevant s
 | positionSizePct | management | 0.35 |
 | minSolToOpen | management | 0.55 |
 | outOfRangeWaitMinutes | management | 30 |
+| dumpDetectionEnabled | management | true |
+| dumpCheckIntervalSec | management | 60 |
+| dumpPriceDrop5mPct | management | -15 |
+| dumpLpRemovalPct | management | -30 |
+| dumpSellBuyRatio | management | 3 (AND dumpSellPctOfTvl, keduanya wajib) |
+| dumpSellPctOfTvl | management | 15 (sell vol 1h harus ≥ X% dari TVL pool) |
+| dumpMcapDropPct | management | -25 |
+| dumpVolSpike5mPct | management | 20 (vol 5m >= X% TVL & harga turun → dev/whale dump 1 tx) |
+| dumpVolSpikePriceMinPct | management | -5 (harga harus turun >= X% untuk sinyal volume spike) |
 | managementIntervalMin | schedule | 10 |
 | screeningIntervalMin | schedule | 30 |
 | managementModel / screeningModel / generalModel | llm | openrouter/healer-alpha |

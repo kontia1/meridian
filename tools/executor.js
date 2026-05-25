@@ -431,7 +431,8 @@ const toolMap = {
       dumpSellPctOfTvl:      ["management", "dumpSellPctOfTvl"],
       dumpMcapDropPct:       ["management", "dumpMcapDropPct"],
       dumpVolSpike5mPct:        ["management", "dumpVolSpike5mPct"],
-      dumpVolSpikePriceMinPct:  ["management", "dumpVolSpikePriceMinPct"],
+      dumpVolSpikePriceMinPct:       ["management", "dumpVolSpikePriceMinPct"],
+      dumpPriceDropSinceDeployPct:   ["management", "dumpPriceDropSinceDeployPct"],
       // risk
       maxPositions: ["risk", "maxPositions"],
       maxDeployAmount: ["risk", "maxDeployAmount"],
@@ -721,14 +722,15 @@ export async function executeTool(name, args) {
           fetchDumpContext(args.pool_address || result.pool, result.base_mint || args.base_mint || null)
             .then(({ poolDetail, tokenInfo }) => {
               setDeployBaseline(result.position, {
-                tvl:  poolDetail?.tvl ?? null,
-                mcap: tokenInfo?.mcap ?? null,
+                tvl:   poolDetail?.tvl ?? null,
+                mcap:  tokenInfo?.mcap ?? null,
+                price: tokenInfo?.price ?? null,
               });
             })
             .catch(() => {}); // non-fatal
         }
       } else if (name === "close_position") {
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0 }).catch(() => {});
+        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch(() => {});
         if (process.env.MERIDIAN_PROFILE === "autoresearch" && config.autoresearch?.runId) {
           writeRunResult(config.autoresearch.runId, result, args);
         }

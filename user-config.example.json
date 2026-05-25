@@ -84,6 +84,7 @@
   "dumpMcapDropPct": -25,
   "dumpVolSpike5mPct": 20,
   "dumpVolSpikePriceMinPct": -5,
+  "dumpPriceDropSinceDeployPct": -8,
 
   "temperature": 0.373,
   "maxTokens": 4096,

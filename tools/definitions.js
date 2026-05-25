@@ -317,10 +317,10 @@ WARNING: This executes a real on-chain transaction. Cannot be undone.`,
           },
           reason: {
             type: "string",
-            description: "Why this position is being closed. Include the rule that triggered it, e.g. 'low yield', 'stop loss', 'trailing TP', 'OOR'. Used for pool memory."
+            description: "REQUIRED. Why this position is being closed. Must include the rule that triggered it, e.g. 'stop loss -52%', 'trailing TP hit', 'OOR 45min', 'low yield 3% APR', 'dump detected price -18%'. Used for pool memory and Telegram notification."
           }
         },
-        required: ["position_address"]
+        required: ["position_address", "reason"]
       }
     }
   },

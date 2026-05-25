@@ -96,8 +96,9 @@ export function trackPosition({
     closed_at: null,
     notes: [],
     // Dump detection baselines (set right after deploy via setDeployBaseline)
-    tvl_at_deploy:  null,
-    mcap_at_deploy: null,
+    tvl_at_deploy:   null,
+    mcap_at_deploy:  null,
+    price_at_deploy: null,
     peak_pnl_pct: 0,
     pending_peak_pnl_pct: null,
     pending_peak_started_at: null,
@@ -120,16 +121,17 @@ export function trackPosition({
  * we don't block the deploy flow on extra API calls.
  *
  * @param {string} position_address
- * @param {{ tvl: number|null, mcap: number|null }} baseline
+ * @param {{ tvl: number|null, mcap: number|null, price: number|null }} baseline
  */
-export function setDeployBaseline(position_address, { tvl, mcap }) {
+export function setDeployBaseline(position_address, { tvl, mcap, price }) {
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return;
-  if (tvl  != null) pos.tvl_at_deploy  = tvl;
-  if (mcap != null) pos.mcap_at_deploy = mcap;
+  if (tvl   != null) pos.tvl_at_deploy   = tvl;
+  if (mcap  != null) pos.mcap_at_deploy  = mcap;
+  if (price != null) pos.price_at_deploy = price;
   save(state);
-  log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} MC=$${Math.round(mcap ?? 0).toLocaleString()}`);
+  log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} MC=$${Math.round(mcap ?? 0).toLocaleString()} Price=$${price ?? "?"}`);
 }
 
 /**

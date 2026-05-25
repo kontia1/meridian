@@ -9,9 +9,12 @@
  *                          b) sell_vol / tvl >= dumpSellPctOfTvl (default: 15%)
  *   4. MC drop         — market cap turun vs baseline saat deploy (default: -25%)
  *   5. Volume spike    — volume 5m / TVL >= dumpVolSpike5mPct (default: 20%)
- *                        DAN harga turun (price_change_pct < 0)
+ *                        DAN harga turun >= dumpVolSpikePriceMinPct (default: -5%)
  *                        Menangkap dev dump / whale dump 1 tx yang tidak terdeteksi
  *                        sinyal 3 karena sinyal 3 pakai window 1 jam.
+ *   6. Price since deploy — harga token turun >= dumpPriceDropSinceDeployPct (default: -8%)
+ *                        vs harga saat posisi dibuka. Menangkap penurunan pelan-pelan
+ *                        yang tidak tertangkap sinyal 1 (window 5m terlalu pendek).
  *
  * Semua threshold bisa diatur via user-config.json (lihat config.js management block).
  */
@@ -170,6 +173,28 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
         `volume spike: vol 5m = ${volSpikePct.toFixed(0)}% TVL saat harga turun ${priceDrop5m.toFixed(1)}% ` +
         `($${Math.round(vol5m).toLocaleString()} / TVL $${Math.round(currentTvl).toLocaleString()}) ` +
         `(threshold: >${volSpike5mThreshold}% TVL & harga <=${volSpikePriceMin}%)`
+      );
+    }
+  }
+
+  // ── 6. Price turun sejak deploy (gradual decline) ──────────────────────
+  //
+  //   Sinyal 1 pakai window 5m — penurunan pelan-pelan (-1% per 5m) tidak trigger.
+  //   Sinyal ini bandingkan harga token SEKARANG vs harga saat deploy.
+  //   Tangkap akumulasi penurunan bertahap yang tidak kelihatan di window pendek.
+  const priceNow       = tokenInfo?.price ?? null;
+  const priceAtDeploy  = trackedPos.price_at_deploy ?? null;
+  const priceSinceDeployThreshold = cfg.dumpPriceDropSinceDeployPct ?? -8;
+  metrics.price_now        = priceNow;
+  metrics.price_at_deploy  = priceAtDeploy;
+  if (priceNow !== null && priceAtDeploy !== null && priceAtDeploy > 0) {
+    const priceDropSinceDeploy = ((priceNow - priceAtDeploy) / priceAtDeploy) * 100;
+    metrics.price_drop_since_deploy = parseFloat(priceDropSinceDeploy.toFixed(1));
+    if (priceDropSinceDeploy <= priceSinceDeployThreshold) {
+      signals.push(
+        `harga turun ${priceDropSinceDeploy.toFixed(1)}% sejak deploy ` +
+        `($${priceAtDeploy.toFixed(6)} → $${priceNow.toFixed(6)}) ` +
+        `(threshold: ${priceSinceDeployThreshold}%)`
       );
     }
   }

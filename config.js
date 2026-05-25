@@ -221,6 +221,9 @@ export const config = {
     // Harga harus turun minimal X% (bukan sembarang negatif) untuk sinyal volume spike
     // Cegah false positive di pool ramai yang harganya naik-turun kecil normal
     dumpVolSpikePriceMinPct:  u.dumpVolSpikePriceMinPct  ?? -5,
+    // Harga token turun >= X% sejak deploy → gradual decline, bukan hanya spike 5m
+    // Set lebih ketat dari stop loss agar dump detector lebih cepat dari management cycle
+    dumpPriceDropSinceDeployPct: u.dumpPriceDropSinceDeployPct ?? -8,
   },
 
   // ─── Strategy Mapping ───────────────────

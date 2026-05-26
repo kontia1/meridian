@@ -770,6 +770,23 @@ export async function executeTool(name, args) {
       }
     }
 
+    // ─── Close position: fire notifyClose even when success=false but close_txs exist
+    // This handles RPC lag: tx was confirmed on-chain but position still appeared open
+    // during the verification window, so dlmm.js returned success:false. We still
+    // want a Telegram notification so the user knows the position was actually closed.
+    if (!success && name === "close_position") {
+      const hasCloseTxs = (result?.close_txs?.length > 0) || (result?.txs?.length > 0);
+      if (hasCloseTxs) {
+        log("executor_warn", `close_position: success=false but close_txs exist — sending Telegram notify anyway (RPC verification lag)`);
+        notifyClose({
+          pair:   result.pool_name || args.position_address?.slice(0, 8),
+          pnlUsd: result.pnl_usd ?? 0,
+          pnlPct: result.pnl_pct ?? 0,
+          reason: args.reason ?? null,
+        }).catch(() => {});
+      }
+    }
+
     return result;
   } catch (error) {
     const duration = Date.now() - startTime;

@@ -196,33 +196,16 @@ export const config = {
     minDeployAmountSol:    u.minDeployAmountSol    ?? 0.1,
 
     // ── Dump Detection ───────────────────────────────────────────────────
-    // Semua setting bisa diatur di user-config.json
     dumpDetectionEnabled:  u.dumpDetectionEnabled  ?? true,
-    // Berapa sinyal minimum yang harus aktif sekaligus untuk trigger close
-    // Default 1 = cukup 1 sinyal. Set 2 untuk lebih konservatif.
     dumpMinSignals:        u.dumpMinSignals        ?? 1,
-    // Seberapa sering cek dump (detik). Set di user-config.json: "dumpCheckIntervalSec": 60
     dumpCheckIntervalSec:  u.dumpCheckIntervalSec  ?? 60,
-    // Threshold harga turun (%) dalam window 5m. Default -15%.
     dumpPriceDrop5mPct:    u.dumpPriceDrop5mPct    ?? -15,
-    // Threshold TVL turun (%) vs saat deploy. Default -30% (LP besar keluar).
     dumpLpRemovalPct:      u.dumpLpRemovalPct      ?? -30,
-    // Threshold rasio sell/buy volume (1h). Default 5× (sell 5x lebih besar dari buy).
-    // Rasio sell/buy — harus >= ini DAN sell_vol >= dumpSellPctOfTvl (dua-duanya wajib)
     dumpSellBuyRatio:      u.dumpSellBuyRatio      ?? 3,
-    // Sell volume 1h harus >= X% dari TVL pool saat ini — normalisasi ke ukuran pool
-    // Cegah false positive: 1 whale sell besar di pool TVL besar tidak auto trigger
     dumpSellPctOfTvl:      u.dumpSellPctOfTvl      ?? 15,
-    // Threshold MC turun (%) vs saat deploy. Default -25%.
     dumpMcapDropPct:       u.dumpMcapDropPct       ?? -25,
-    // Volume 5m >= X% dari TVL DAN harga turun → dev dump / whale dump 1 tx
-    // Menangkap dump mendadak yg lolos sinyal sell pressure (window 1h terlalu lebar)
     dumpVolSpike5mPct:        u.dumpVolSpike5mPct        ?? 20,
-    // Harga harus turun minimal X% (bukan sembarang negatif) untuk sinyal volume spike
-    // Cegah false positive di pool ramai yang harganya naik-turun kecil normal
     dumpVolSpikePriceMinPct:  u.dumpVolSpikePriceMinPct  ?? -5,
-    // Harga token turun >= X% sejak deploy → gradual decline, bukan hanya spike 5m
-    // Set lebih ketat dari stop loss agar dump detector lebih cepat dari management cycle
     dumpPriceDropSinceDeployPct: u.dumpPriceDropSinceDeployPct ?? -8,
   },
 
@@ -255,7 +238,7 @@ export const config = {
   darwin: {
     enabled:        u.darwinEnabled     ?? true,
     windowDays:     u.darwinWindowDays  ?? 60,
-    recalcEvery:    u.darwinRecalcEvery ?? 5,    // recalc every N closes
+    recalcEvery:    u.darwinRecalcEvery ?? 5,
     boostFactor:    u.darwinBoost       ?? 1.05,
     decayFactor:    u.darwinDecay       ?? 0.95,
     weightFloor:    u.darwinFloor       ?? 0.3,
@@ -284,8 +267,6 @@ export const config = {
     lpAgentRelayEnabled: u.lpAgentRelayEnabled ?? false,
   },
 
-  // ─── HiveMind Publish Mode ────────────────
-  // "production" = normal publish; "experimental" = tag with profile+runId; "off" = no publish
   hiveMindPublishMode: u.hiveMindPublishMode ?? "production",
 
   // ─── Autoresearch ─────────────────────────
@@ -324,18 +305,6 @@ export const config = {
   },
 };
 
-/**
- * Compute the optimal deploy amount for a given wallet balance.
- * Scales position size with wallet growth (compounding).
- *
- * Formula: clamp(deployable × positionSizePct, floor=deployAmountSol, ceil=maxDeployAmount)
- *
- * Examples (defaults: gasReserve=0.2, positionSizePct=0.35, floor=0.5):
- *   0.8 SOL wallet → 0.6 SOL deploy  (floor)
- *   2.0 SOL wallet → 0.63 SOL deploy
- *   3.0 SOL wallet → 0.98 SOL deploy
- *   4.0 SOL wallet → 1.33 SOL deploy
- */
 export function computeDeployAmount(walletSol) {
   const reserve  = config.management.gasReserve         ?? 0.2;
   const pct      = config.management.positionSizePct    ?? 0.35;
@@ -347,11 +316,6 @@ export function computeDeployAmount(walletSol) {
   return parseFloat(result.toFixed(2));
 }
 
-/**
- * Reload user-config.json and apply updated screening thresholds to the
- * in-memory config object. Called after threshold evolution so the next
- * agent cycle uses the evolved values without a restart.
- */
 export function reloadScreeningThresholds() {
   try {
     const fresh = readJsonIfExists(USER_CONFIG_PATH);

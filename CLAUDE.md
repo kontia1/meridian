@@ -221,7 +221,7 @@ Not required for normal operation.
 ## Environment Variables
 
 | Var | Required | Purpose |
-|-----|----------|---------|
+|-----|----------|--------|
 | `WALLET_PRIVATE_KEY` | Yes | Base58 or JSON array private key |
 | `RPC_URL` | Yes | Solana RPC endpoint |
 | `OPENROUTER_API_KEY` | Yes | LLM API key |

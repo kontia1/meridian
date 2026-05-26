@@ -51,9 +51,6 @@ function save(state) {
 
 // ─── Position Registry ─────────────────────────────────────────
 
-/**
- * Record a newly deployed position.
- */
 export function trackPosition({
   position,
   pool,
@@ -95,7 +92,6 @@ export function trackPosition({
     closed: false,
     closed_at: null,
     notes: [],
-    // Dump detection baselines (set right after deploy via setDeployBaseline)
     tvl_at_deploy:   null,
     mcap_at_deploy:  null,
     price_at_deploy: null,
@@ -115,14 +111,6 @@ export function trackPosition({
   log("state", `Tracked new position: ${position} in pool ${pool}`);
 }
 
-/**
- * Store TVL and MC baselines for dump detection.
- * Called fire-and-forget after deploy — separate from trackPosition so
- * we don't block the deploy flow on extra API calls.
- *
- * @param {string} position_address
- * @param {{ tvl: number|null, mcap: number|null, price: number|null }} baseline
- */
 export function setDeployBaseline(position_address, { tvl, mcap, price }) {
   const state = load();
   const pos = state.positions[position_address];
@@ -134,9 +122,6 @@ export function setDeployBaseline(position_address, { tvl, mcap, price }) {
   log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} MC=$${Math.round(mcap ?? 0).toLocaleString()} Price=$${price ?? "?"}`);
 }
 
-/**
- * Mark a position as out of range (sets timestamp on first detection).
- */
 export function markOutOfRange(position_address) {
   const state = load();
   const pos = state.positions[position_address];
@@ -148,9 +133,6 @@ export function markOutOfRange(position_address) {
   }
 }
 
-/**
- * Mark a position as back in range (clears OOR timestamp).
- */
 export function markInRange(position_address) {
   const state = load();
   const pos = state.positions[position_address];
@@ -162,10 +144,6 @@ export function markInRange(position_address) {
   }
 }
 
-/**
- * How many minutes has a position been out of range?
- * Returns 0 if currently in range.
- */
 export function minutesOutOfRange(position_address) {
   const state = load();
   const pos = state.positions[position_address];
@@ -174,9 +152,6 @@ export function minutesOutOfRange(position_address) {
   return Math.floor(ms / 60000);
 }
 
-/**
- * Record a fee claim event.
- */
 export function recordClaim(position_address, fees_usd) {
   const state = load();
   const pos = state.positions[position_address];
@@ -187,9 +162,6 @@ export function recordClaim(position_address, fees_usd) {
   save(state);
 }
 
-/**
- * Append to the recent events log (shown in every prompt).
- */
 function pushEvent(state, event) {
   if (!state.recentEvents) state.recentEvents = [];
   state.recentEvents.push({ ts: new Date().toISOString(), ...event });
@@ -198,9 +170,6 @@ function pushEvent(state, event) {
   }
 }
 
-/**
- * Mark a position as closed.
- */
 export function recordClose(position_address, reason) {
   const state = load();
   const pos = state.positions[position_address];
@@ -213,9 +182,6 @@ export function recordClose(position_address, reason) {
   log("state", `Position ${position_address} marked closed: ${reason}`);
 }
 
-/**
- * Record a rebalance (close + redeploy).
- */
 export function recordRebalance(old_position, new_position) {
   const state = load();
   const old = state.positions[old_position];
@@ -232,10 +198,6 @@ export function recordRebalance(old_position, new_position) {
   save(state);
 }
 
-/**
- * Set a persistent instruction for a position (e.g. "hold until 5% profit").
- * Overwrites any previous instruction. Pass null to clear.
- */
 export function setPositionInstruction(position_address, instruction) {
   const state = load();
   const pos = state.positions[position_address];
@@ -356,26 +318,17 @@ export function resolvePendingTrailingDrop(position_address, currentPnlPct, trai
   return { confirmed: false, rejected: true };
 }
 
-/**
- * Get all tracked positions (optionally filter open-only).
- */
 export function getTrackedPositions(openOnly = false) {
   const state = load();
   const all = Object.values(state.positions);
   return openOnly ? all.filter((p) => !p.closed) : all;
 }
 
-/**
- * Get a single tracked position.
- */
 export function getTrackedPosition(position_address) {
   const state = load();
   return state.positions[position_address] || null;
 }
 
-/**
- * Summarize state for the agent system prompt.
- */
 export function getStateSummary() {
   const state = load();
   const open = Object.values(state.positions).filter((p) => !p.closed);
@@ -404,14 +357,6 @@ export function getStateSummary() {
   };
 }
 
-/**
- * Check all exit conditions for a position (trailing TP, stop loss, OOR, low yield).
- * Updates peak_pnl_pct, trailing_active, and OOR state.
- * @param {string} position_address
- * @param {object} positionData - fields from getMyPositions: pnl_pct, in_range, fee_per_tvl_24h
- * @param {object} mgmtConfig
- * Returns { action, reason } or null if no exit needed.
- */
 export function updatePnlAndCheckExits(position_address, positionData, mgmtConfig) {
   const { pnl_pct: currentPnlPct, pnl_pct_suspicious, in_range, fee_per_tvl_24h } = positionData;
   const state = load();
@@ -432,14 +377,12 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
 
   let changed = false;
 
-  // Activate trailing TP once trigger threshold is reached
   if (mgmtConfig.trailingTakeProfit && !pos.trailing_active && (pos.peak_pnl_pct ?? 0) >= mgmtConfig.trailingTriggerPct) {
     pos.trailing_active = true;
     changed = true;
     log("state", `Position ${position_address} trailing TP activated (confirmed peak: ${pos.peak_pnl_pct}%)`);
   }
 
-  // Update OOR state
   if (in_range === false && !pos.out_of_range_since) {
     pos.out_of_range_since = new Date().toISOString();
     changed = true;
@@ -452,7 +395,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
 
   if (changed) save(state);
 
-  // ── Stop loss ──────────────────────────────────────────────────
   if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
     return {
       action: "STOP_LOSS",
@@ -460,7 +402,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     };
   }
 
-  // ── Trailing TP ────────────────────────────────────────────────
   if (!pnl_pct_suspicious && pos.trailing_active) {
     const dropFromPeak = pos.peak_pnl_pct - currentPnlPct;
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
@@ -475,7 +416,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     }
   }
 
-  // ── Out of range too long ──────────────────────────────────────
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
     if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
@@ -486,7 +426,6 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     }
   }
 
-  // ── Low yield (only after position has had time to accumulate fees) ───
   const { age_minutes } = positionData;
   const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 60;
   if (
@@ -504,30 +443,18 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   return null;
 }
 
-// ─── Briefing Tracking ─────────────────────────────────────────
-
-/**
- * Get the date (YYYY-MM-DD UTC) when the last briefing was sent.
- */
 export function getLastBriefingDate() {
   const state = load();
   return state._lastBriefingDate || null;
 }
 
-/**
- * Record that the briefing was sent today.
- */
 export function setLastBriefingDate() {
   const state = load();
-  state._lastBriefingDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  state._lastBriefingDate = new Date().toISOString().slice(0, 10);
   save(state);
 }
 
-/**
- * Reconcile local state with actual on-chain positions.
- * Marks any local open positions as closed if they are not in the on-chain list.
- */
-const SYNC_GRACE_MS = 5 * 60_000; // don't auto-close positions deployed < 5 min ago
+const SYNC_GRACE_MS = 5 * 60_000;
 
 export function syncOpenPositions(active_addresses) {
   const state = load();
@@ -538,7 +465,6 @@ export function syncOpenPositions(active_addresses) {
     const pos = state.positions[posId];
     if (pos.closed || activeSet.has(posId)) continue;
 
-    // Grace period: newly deployed positions may not be indexed yet
     const deployedAt = pos.deployed_at ? new Date(pos.deployed_at).getTime() : 0;
     if (Date.now() - deployedAt < SYNC_GRACE_MS) {
       log("state", `Position ${posId} not on-chain yet — within grace period, skipping auto-close`);

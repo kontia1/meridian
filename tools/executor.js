@@ -69,7 +69,7 @@ function numberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-// ─── Autoresearch Helpers ────────────────────────────────────────
+// ─── Autoresearch Helpers ────────────────────────────────────────────
 
 function runResultsPath(runId) {
   if (!runId) return null;
@@ -686,7 +686,7 @@ export async function executeTool(name, args) {
     return { error };
   }
 
-  // ─── Pre-execution safety checks ──────────
+  // ─── Pre-execution safety checks ──────
   if (PROTECTED_TOOLS.has(name)) {
     const safetyCheck = await runSafetyChecks(name, args);
     if (!safetyCheck.pass) {
@@ -698,7 +698,7 @@ export async function executeTool(name, args) {
     }
   }
 
-  // ─── Execute ──────────────────────────────
+  // ─── Execute ──────────────────────
   try {
     const result = await fn(args);
     const duration = Date.now() - startTime;

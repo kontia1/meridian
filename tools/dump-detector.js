@@ -10,29 +10,13 @@
  *   4. MC drop         — market cap turun vs baseline saat deploy (default: -25%)
  *   5. Volume spike    — volume 5m / TVL >= dumpVolSpike5mPct (default: 20%)
  *                        DAN harga turun >= dumpVolSpikePriceMinPct (default: -5%)
- *                        Menangkap dev dump / whale dump 1 tx yang tidak terdeteksi
- *                        sinyal 3 karena sinyal 3 pakai window 1 jam.
  *   6. Price since deploy — harga token turun >= dumpPriceDropSinceDeployPct (default: -8%)
- *                        vs harga saat posisi dibuka. Menangkap penurunan pelan-pelan
- *                        yang tidak tertangkap sinyal 1 (window 5m terlalu pendek).
- *
- * Semua threshold bisa diatur via user-config.json (lihat config.js management block).
  */
 
 import { getPoolDetail } from "./screening.js";
 import { getTokenInfo } from "./token.js";
 import { log } from "../logger.js";
 
-// ─── Data Fetching ───────────────────────────────────────────────────────────
-
-/**
- * Fetch pool detail (5m snapshot) and token info for a position.
- * Both calls run in parallel; either may be null if the API fails.
- *
- * @param {string} pool_address
- * @param {string|null} base_mint  — token mint for sell pressure + MC data
- * @returns {{ poolDetail: object|null, tokenInfo: object|null }}
- */
 export async function fetchDumpContext(pool_address, base_mint) {
   if (!pool_address) return { poolDetail: null, tokenInfo: null };
 
@@ -54,17 +38,6 @@ export async function fetchDumpContext(pool_address, base_mint) {
   return { poolDetail, tokenInfo };
 }
 
-// ─── Signal Detection ────────────────────────────────────────────────────────
-
-/**
- * Check a tracked position for dump signals.
- *
- * @param {object}      trackedPos  — from state (needs .pool, .pool_name, optionally .tvl_at_deploy, .mcap_at_deploy)
- * @param {object|null} poolDetail  — from getPoolDetail("5m"); may be null
- * @param {object|null} tokenInfo   — from getTokenInfo (first result); may be null
- * @param {object}      cfg         — config.management
- * @returns {{ isDump: boolean, reason: string, signals: string[], metrics: object }}
- */
 export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
   const signals = [];
   const metrics = {};
@@ -97,14 +70,7 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
     }
   }
 
-  // ── 3. Tekanan jual — dua kondisi harus terpenuhi sekaligus ────────────
-  //
-  //   (a) sell_vol / buy_vol >= dumpSellBuyRatio   → tekanan jual relatif ke buyer
-  //   (b) sell_vol / current_tvl >= dumpSellPctOfTvl → normalisasi ke ukuran pool
-  //
-  //   Kondisi (b) mencegah false positive: 1 whale sell $50k di pool $1M TVL
-  //   menghasilkan sell/TVL = 5% (tidak signifikan), meski ratio-nya tinggi.
-  //   Di pool kecil ($80k TVL), $50k sell = 62% → memang berbahaya.
+  // ── 3. Tekanan jual ────────────────────────────────────────────────────
   const ratioThreshold  = cfg.dumpSellBuyRatio    ?? 3;
   const tvlPctThreshold = cfg.dumpSellPctOfTvl    ?? 15;
   const sellVol = parseFloat(tokenInfo?.stats_1h?.sell_vol ?? 0);
@@ -118,7 +84,7 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
 
     const ratioOk  = buyVol > 0
       ? sellVol / buyVol >= ratioThreshold
-      : sellVol > 50; // tidak ada pembeli sama sekali → langsung lolos syarat ratio
+      : sellVol > 50;
     const tvlPctOk = sellPctOfTvl >= tvlPctThreshold;
 
     if (ratioOk && tvlPctOk) {
@@ -150,13 +116,7 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
     }
   }
 
-  // ── 5. Volume spike 5m (dev dump / whale dump 1 tx) ───────────────────
-  //
-  //   Sinyal 3 pakai window 1 jam — kalau dev dump di menit ke-45, ada buy
-  //   history dari awal jam yang mengencerkan rasionya → bisa lolos sinyal 3.
-  //   Sinyal ini pakai volume 5m dari poolDetail (sudah ada, tidak butuh API baru):
-  //     volume_5m / tvl >= dumpVolSpike5mPct  →  ada aktivitas besar mendadak
-  //     DAN price_change_pct < 0              →  arahnya turun (bukan pump)
+  // ── 5. Volume spike 5m ─────────────────────────────────────────────────
   const volSpike5mThreshold = cfg.dumpVolSpike5mPct ?? 20;
   const volSpikePriceMin    = cfg.dumpVolSpikePriceMinPct ?? -5;
   const vol5m = poolDetail?.volume_window ?? null;
@@ -177,11 +137,7 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
     }
   }
 
-  // ── 6. Price turun sejak deploy (gradual decline) ──────────────────────
-  //
-  //   Sinyal 1 pakai window 5m — penurunan pelan-pelan (-1% per 5m) tidak trigger.
-  //   Sinyal ini bandingkan harga token SEKARANG vs harga saat deploy.
-  //   Tangkap akumulasi penurunan bertahap yang tidak kelihatan di window pendek.
+  // ── 6. Price turun sejak deploy ────────────────────────────────────────
   const priceNow       = tokenInfo?.price ?? null;
   const priceAtDeploy  = trackedPos.price_at_deploy ?? null;
   const priceSinceDeployThreshold = cfg.dumpPriceDropSinceDeployPct ?? -8;

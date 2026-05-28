@@ -322,7 +322,7 @@ export function resolvePendingTrailingDrop(position_address, currentPnlPct, trai
   if (stillNearCrash && stillDroppedEnough) {
     const reason = `Trailing TP: peak ${pendingPeak.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${(pendingPeak - currentPnlPct).toFixed(2)}% >= ${trailingDropPct}%)`;
     pos.confirmed_trailing_exit_reason = reason;
-    pos.confirmed_trailing_exit_until = new Date(Date.now() + 30_000).toISOString();
+    pos.confirmed_trailing_exit_until = new Date(Date.now() + 15 * 60_000).toISOString();
     save(state);
     log("state", `Position ${position_address} trailing drop confirmed after recheck: pending drop ${pendingDrop.toFixed(2)}%, current ${currentPnlPct.toFixed(2)}%`);
     return { confirmed: true, reason };

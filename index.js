@@ -206,7 +206,16 @@ function scheduleTrailingDropConfirmation(positionAddress) {
       );
       if (resolved?.confirmed) {
         log("state", `[Trailing recheck] Confirmed trailing exit for ${positionAddress} — triggering management`);
-        runManagementCycle({ silent: true }).catch((e) => log("cron_error", `Trailing recheck management failed: ${e.message}`));
+        const result = await runManagementCycle({ silent: true }).catch((e) => {
+          log("cron_error", `Trailing recheck management failed: ${e.message}`);
+          return null;
+        });
+        if (result === null) {
+          log("state", `[Trailing recheck] Management was busy — scheduling retry in 2 min`);
+          setTimeout(() => {
+            runManagementCycle({ silent: true }).catch((e) => log("cron_error", `Trailing recheck retry failed: ${e.message}`));
+          }, 2 * 60_000);
+        }
       }
     } catch (error) {
       log("state_warn", `Trailing drop confirmation failed for ${positionAddress}: ${error.message}`);

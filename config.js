@@ -207,6 +207,7 @@ export const config = {
     dumpVolSpike5mPct:        u.dumpVolSpike5mPct        ?? 20,
     dumpVolSpikePriceMinPct:  u.dumpVolSpikePriceMinPct  ?? -5,
     dumpPriceDropSinceDeployPct: u.dumpPriceDropSinceDeployPct ?? -8,
+    dumpGracePeriodMin:         u.dumpGracePeriodMin         ?? 5,
   },
 
   // ─── Strategy Mapping ───────────────────

@@ -938,6 +938,12 @@ Summarize the current portfolio health, total fees earned, and performance of al
         try {
           for (const trackedPos of openPositions) {
             if (!trackedPos.pool) continue;
+            const gracePeriodMs = (config.management.dumpGracePeriodMin ?? 5) * 60_000;
+            if (trackedPos.deployed_at && (Date.now() - new Date(trackedPos.deployed_at).getTime()) < gracePeriodMs) {
+              const ageMin = Math.floor((Date.now() - new Date(trackedPos.deployed_at).getTime()) / 60_000);
+              log("dump", `[${trackedPos.pool_name || trackedPos.pool?.slice(0, 8)}] Skipping dump check — grace period (${ageMin}/${config.management.dumpGracePeriodMin}min)`);
+              continue;
+            }
             const { poolDetail, tokenInfo } = await fetchDumpContext(
               trackedPos.pool,
               trackedPos.base_mint || null,
@@ -981,7 +987,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
   const dumpSec = config.management.dumpCheckIntervalSec;
   const minSig  = config.management.dumpMinSignals;
   if (config.management.dumpDetectionEnabled) {
-    log("dump", `Dump detection ON — interval ${dumpSec}s, min signals to close: ${minSig}`);
+    log("dump", `Dump detection ON — interval ${dumpSec}s, min signals to close: ${minSig}, grace period: ${config.management.dumpGracePeriodMin}min`);
     log("dump", `Thresholds: price<=${config.management.dumpPriceDrop5mPct}% | LP<=${config.management.dumpLpRemovalPct}% | sell/buy>=${config.management.dumpSellBuyRatio}x & sell/TVL>=${config.management.dumpSellPctOfTvl}% | mcap<=${config.management.dumpMcapDropPct}% | vol5m>=${config.management.dumpVolSpike5mPct}%&price<=${config.management.dumpVolSpikePriceMinPct}%`);
   } else {
     log("dump", "Dump detection DISABLED");

@@ -42,6 +42,12 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
   const signals = [];
   const metrics = {};
 
+  // Grace period: skip sinyal 3 (sell pressure 1h) karena pakai data historis sebelum deploy.
+  // Sinyal lain (harga crash, LP removal, volume spike) tetap aktif — rug bisa terjadi kapan saja.
+  const gracePeriodMs = (cfg.dumpGracePeriodMin ?? 5) * 60_000;
+  const ageMs = trackedPos.deployed_at ? Date.now() - new Date(trackedPos.deployed_at).getTime() : Infinity;
+  const inGracePeriod = ageMs < gracePeriodMs;
+
   // ── 1. Harga crash (5m window) ──────────────────────────────────────────
   const priceDrop5m    = poolDetail?.price_change_pct ?? null;
   const priceThreshold = cfg.dumpPriceDrop5mPct ?? -15;
@@ -78,7 +84,7 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
   metrics.sell_vol_1h = sellVol;
   metrics.buy_vol_1h  = buyVol;
 
-  if (currentTvl !== null && currentTvl > 0 && sellVol > 0) {
+  if (!inGracePeriod && currentTvl !== null && currentTvl > 0 && sellVol > 0) {
     const sellPctOfTvl = (sellVol / currentTvl) * 100;
     metrics.sell_pct_of_tvl = parseFloat(sellPctOfTvl.toFixed(1));
 

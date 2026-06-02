@@ -292,8 +292,8 @@ export async function runManagementCycle({ silent = false } = {}) {
         const tracked = getTrackedPosition(p.position);
         const pool = tracked?.pool || p.pool;
         if (!pool) return;
-        const { poolDetail } = await fetchDumpContext(pool);
-        if (poolDetail) poolContextMap.set(p.position, { poolDetail, tracked: tracked || {} });
+        const { poolDetail, usdPrice } = await fetchDumpContext(pool);
+        if (poolDetail) poolContextMap.set(p.position, { poolDetail, usdPrice, tracked: tracked || {} });
       })
     );
 
@@ -319,23 +319,25 @@ export async function runManagementCycle({ silent = false } = {}) {
       // Line 4 — yield and fees
       const line4 = `Yield ${p.fee_per_tvl_24h ?? "?"}% | Fee ${cur}${p.unclaimed_fees_usd ?? "?"}`;
 
-      // Lines 5–6 — price and TVL vs deploy
+      // Lines 5–6 — price (USD) and TVL vs deploy
       const lines56 = [];
       const ctx = poolContextMap.get(p.position);
       if (ctx) {
-        const { poolDetail, tracked } = ctx;
-        const pNow    = poolDetail.pool_price ?? poolDetail.price ?? null;
-        const pDeploy = tracked.price_at_deploy ?? null;
+        const { usdPrice, poolDetail, tracked } = ctx;
+        const pNow    = usdPrice ?? null;
+        const pDeploy = tracked.usd_price_at_deploy ?? null;
         const tvlNow    = poolDetail.tvl ?? poolDetail.active_tvl ?? null;
         const tvlDeploy = tracked.tvl_at_deploy ?? null;
 
         if (pNow != null) {
+          const fmt = pNow < 0.0001 ? pNow.toFixed(8) : pNow < 0.01 ? pNow.toFixed(6) : pNow.toFixed(4);
           if (pDeploy != null && pDeploy > 0) {
             const pct = ((pNow - pDeploy) / pDeploy * 100).toFixed(1);
             const arrow = Number(pct) >= 0 ? "▲" : "▼";
-            lines56.push(`Price  $${pDeploy.toFixed(6)} → $${pNow.toFixed(6)}  ${arrow}${Math.abs(pct)}%`);
+            const fmtD = pDeploy < 0.0001 ? pDeploy.toFixed(8) : pDeploy < 0.01 ? pDeploy.toFixed(6) : pDeploy.toFixed(4);
+            lines56.push(`Price  $${fmtD} → $${fmt}  ${arrow}${Math.abs(pct)}%`);
           } else {
-            lines56.push(`Price  $${pNow.toFixed(6)}`);
+            lines56.push(`Price  $${fmt}`);
           }
         }
         if (tvlNow != null) {

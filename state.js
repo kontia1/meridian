@@ -172,14 +172,15 @@ export function recordClaim(position_address, fees_usd) {
  * Record TVL, mcap, and price at deploy time — used by dump detector as baselines.
  * Called asynchronously after deploy so it doesn't block the deploy tx.
  */
-export function setDeployBaseline(position_address, { tvl, price }) {
+export function setDeployBaseline(position_address, { tvl, price, usdPrice }) {
   const state = load();
   const pos = state.positions[position_address];
   if (!pos || pos.closed) return;
-  if (tvl   != null) pos.tvl_at_deploy   = tvl;
-  if (price != null) pos.price_at_deploy = price;
+  if (tvl      != null) pos.tvl_at_deploy       = tvl;
+  if (price    != null) pos.price_at_deploy      = price;
+  if (usdPrice != null) pos.usd_price_at_deploy  = usdPrice;
   save(state);
-  log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} Price=$${price ?? "?"}`);
+  log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} USD=$${usdPrice ?? "?"}`);
 }
 
 /**

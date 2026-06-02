@@ -3,13 +3,14 @@
  *
  * Dua sinyal, masing-masing bisa trigger close secara independent:
  *
- *   1. Price drop sejak deploy  — pool_price sekarang vs pool_price saat deploy
- *                                 Menangkap soft rug (bleed pelan) dan instant rug
+ *   1. Price drop sejak deploy  — token_x.price (USD dari Meteora) sekarang vs saat deploy
+ *                                 Tidak terpengaruh SOL movement. Menangkap soft rug & instant rug.
  *
  *   2. TVL collapse sejak deploy — TVL sekarang vs TVL saat deploy
  *                                  Menangkap dev remove liquidity
  *
  * Semua data dari Meteora pool API — fresh per check, bukan window agregat.
+ * Tidak ada extra API call — token_x.price sudah ada di response getPoolDetail.
  *
  * Config keys (user-config.json):
  *   dumpDetectionEnabled   — on/off (default: true)
@@ -22,26 +23,11 @@
 import { getPoolDetail } from "./screening.js";
 import { log } from "../logger.js";
 
-async function fetchUsdPrice(mint) {
-  if (!mint) return null;
-  try {
-    const res = await fetch(`https://lite-api.jup.ag/price/v2?ids=${mint}`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const price = data?.data?.[mint]?.price;
-    return price != null ? parseFloat(price) : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function fetchDumpContext(pool_address, { withUsdPrice = false } = {}) {
+export async function fetchDumpContext(pool_address) {
   if (!pool_address) return { poolDetail: null, usdPrice: null };
   try {
     const poolDetail = await getPoolDetail({ pool_address, timeframe: "5m" });
-    const usdPrice = withUsdPrice
-      ? await fetchUsdPrice(poolDetail?.token_x?.address ?? null)
-      : null;
+    const usdPrice = poolDetail?.token_x?.price ?? null;
     return { poolDetail, usdPrice };
   } catch (e) {
     log("dump_warn", `fetchDumpContext failed for ${pool_address}: ${e.message}`);
@@ -54,17 +40,18 @@ export function checkDumpSignals(trackedPos, poolDetail, cfg) {
   const metrics = {};
   const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";
 
-  const currentPrice = poolDetail?.pool_price ?? poolDetail?.price ?? null;
-  const currentTvl   = poolDetail?.tvl ?? poolDetail?.active_tvl ?? null;
-  const priceAtDeploy = trackedPos.price_at_deploy ?? null;
-  const tvlAtDeploy   = trackedPos.tvl_at_deploy   ?? null;
+  // USD price from Meteora token_x.price — not affected by SOL movement
+  const currentPrice  = poolDetail?.token_x?.price ?? null;
+  const currentTvl    = poolDetail?.tvl ?? poolDetail?.active_tvl ?? null;
+  const priceAtDeploy = trackedPos.usd_price_at_deploy ?? null;
+  const tvlAtDeploy   = trackedPos.tvl_at_deploy ?? null;
 
-  metrics.price_now      = currentPrice;
+  metrics.price_now       = currentPrice;
   metrics.price_at_deploy = priceAtDeploy;
-  metrics.tvl_now        = currentTvl;
-  metrics.tvl_at_deploy  = tvlAtDeploy;
+  metrics.tvl_now         = currentTvl;
+  metrics.tvl_at_deploy   = tvlAtDeploy;
 
-  // ── 1. Pool price drop sejak deploy ──────────────────────────────────────
+  // ── 1. USD price drop sejak deploy ───────────────────────────────────────
   const priceThreshold = cfg.dumpPriceDropPct ?? -15;
   if (currentPrice !== null && priceAtDeploy !== null && priceAtDeploy > 0) {
     const priceDrop = ((currentPrice - priceAtDeploy) / priceAtDeploy) * 100;

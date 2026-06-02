@@ -292,7 +292,7 @@ export async function runManagementCycle({ silent = false } = {}) {
         const tracked = getTrackedPosition(p.position);
         const pool = tracked?.pool || p.pool;
         if (!pool) return;
-        const { poolDetail, usdPrice } = await fetchDumpContext(pool, { withUsdPrice: true });
+        const { poolDetail, usdPrice } = await fetchDumpContext(pool);
         if (poolDetail) poolContextMap.set(p.position, { poolDetail, usdPrice, tracked: tracked || {} });
       })
     );

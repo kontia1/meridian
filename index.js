@@ -946,11 +946,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
               trackedPos, poolDetail, tokenInfo, config.management,
             );
             const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "?";
-            if (!isDump) {
-              log("dump", `[${pair}] OK — no dump signals (checked ${signals?.length ?? 0} active)`);
-              continue;
-            }
-            log("dump_warn", reason);
+            if (!isDump) continue;
             if (telegramEnabled()) sendMessage(reason).catch(() => {});
 
             // Langsung close tanpa tunggu LLM — dump = emergency, tidak perlu deliberasi

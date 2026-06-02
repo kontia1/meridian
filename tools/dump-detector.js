@@ -47,6 +47,11 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
   const gracePeriodMs = (cfg.dumpGracePeriodMin ?? 5) * 60_000;
   const ageMs = trackedPos.deployed_at ? Date.now() - new Date(trackedPos.deployed_at).getTime() : Infinity;
   const inGracePeriod = ageMs < gracePeriodMs;
+  const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";
+  const ageMin = Number.isFinite(ageMs) ? (ageMs / 60_000).toFixed(1) : "?";
+  if (inGracePeriod) {
+    log("dump", `[${pair}] Grace period aktif (${ageMin}/${cfg.dumpGracePeriodMin ?? 5}min) — sinyal 3 (sell pressure 1h) di-skip`);
+  }
 
   // ── 1. Harga crash (5m window) ──────────────────────────────────────────
   const priceDrop5m    = poolDetail?.price_change_pct ?? null;
@@ -164,13 +169,21 @@ export function checkDumpSignals(trackedPos, poolDetail, tokenInfo, cfg) {
   // ── Result ─────────────────────────────────────────────────────────────
   const minSignals = cfg.dumpMinSignals ?? 1;
   if (signals.length < minSignals) {
+    const metricsSummary = [
+      metrics.price_change_5m != null ? `price5m=${metrics.price_change_5m}%` : null,
+      metrics.tvl_drop_pct    != null ? `tvlDrop=${metrics.tvl_drop_pct}%` : null,
+      metrics.sell_pct_of_tvl != null ? `sell=${metrics.sell_pct_of_tvl}%TVL ratio=${metrics.sell_buy_ratio ?? "∞"}×` : null,
+      metrics.mcap_drop_pct   != null ? `mcapDrop=${metrics.mcap_drop_pct}%` : null,
+      metrics.price_drop_since_deploy != null ? `priceSinceDeploy=${metrics.price_drop_since_deploy}%` : null,
+    ].filter(Boolean).join(" | ");
+    log("dump", `[${pair}] OK — ${signals.length}/${minSignals} sinyal${metricsSummary ? ` (${metricsSummary})` : ""}`);
     return { isDump: false, reason: `only ${signals.length}/${minSignals} dump signals`, signals, metrics };
   }
 
-  const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";
   const reason =
     `🚨 DUMP TERDETEKSI [${pair}] — ${signals.length} sinyal: ` +
     signals.join(" | ");
+  log("dump_warn", `[${pair}] ${signals.length} sinyal aktif → close`);
 
   return { isDump: true, reason, signals, metrics };
 }

@@ -349,9 +349,6 @@ export async function runManagementCycle({ silent = false } = {}) {
       ? needsAction.map(a => a.action === "INSTRUCTION" ? "EVAL instruction" : `${a.action}${a.reason ? ` (${a.reason})` : ""}`).join(", ")
       : "no action";
 
-    const totalValue = positionData.reduce((s, p) => s + (p.total_value_usd ?? 0), 0);
-    const totalUnclaimed = positionData.reduce((s, p) => s + (p.unclaimed_fees_usd ?? 0), 0);
-
     mgmtReport = reportLines.join("\n\n") +
       `\n\n─────\n${positions.length} pos  ${cur}${totalValue.toFixed(2)} val  ${cur}${totalUnclaimed.toFixed(2)} fees  ${actionSummary}`;
 

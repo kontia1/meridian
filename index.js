@@ -301,12 +301,12 @@ export async function runManagementCycle({ silent = false } = {}) {
     const reportLines = positionData.map((p) => {
       const act = actionMap.get(p.position);
 
-      // Line 1 — pair, range, age, action
+      // Line 1 — pair, range status, age, action
       const rangeIcon = p.in_range ? "🟢" : "🔴";
       const rangeLabel = p.in_range ? "in range" : `OOR ${p.minutes_out_of_range ?? 0}m`;
       const actionLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)"
         : act.action === "STAY" ? "hold" : act.action;
-      const line1 = `${p.pair}  ${rangeIcon} ${rangeLabel}  ${p.age_minutes ?? "?"}m  →  ${actionLabel}`;
+      const line1 = `${p.pair}  ${rangeIcon} ${rangeLabel}  age ${p.age_minutes ?? "?"}m  →  ${actionLabel}`;
 
       // Line 2 — val, fees, pnl, yield
       const pnlSign = (p.pnl_pct ?? 0) >= 0 ? "+" : "";
@@ -322,15 +322,23 @@ export async function runManagementCycle({ silent = false } = {}) {
         const tvlNow    = poolDetail.tvl ?? poolDetail.active_tvl ?? null;
         const tvlDeploy = tracked.tvl_at_deploy ?? null;
 
-        if (pNow != null && pDeploy != null && pDeploy > 0) {
-          const pct = ((pNow - pDeploy) / pDeploy * 100).toFixed(1);
-          const arrow = pct >= 0 ? "▲" : "▼";
-          lines34.push(`  Price  $${pDeploy.toFixed(6)} → $${pNow.toFixed(6)}  ${arrow}${Math.abs(pct)}%`);
+        if (pNow != null) {
+          if (pDeploy != null && pDeploy > 0) {
+            const pct = ((pNow - pDeploy) / pDeploy * 100).toFixed(1);
+            const arrow = pct >= 0 ? "▲" : "▼";
+            lines34.push(`  Price  $${pDeploy.toFixed(6)} → $${pNow.toFixed(6)}  ${arrow}${Math.abs(pct)}%`);
+          } else {
+            lines34.push(`  Price  $${pNow.toFixed(6)}`);
+          }
         }
-        if (tvlNow != null && tvlDeploy != null && tvlDeploy > 0) {
-          const pct = ((tvlNow - tvlDeploy) / tvlDeploy * 100).toFixed(1);
-          const arrow = pct >= 0 ? "▲" : "▼";
-          lines34.push(`  TVL    ${cur}${Math.round(tvlDeploy).toLocaleString()} → ${cur}${Math.round(tvlNow).toLocaleString()}  ${arrow}${Math.abs(pct)}%`);
+        if (tvlNow != null) {
+          if (tvlDeploy != null && tvlDeploy > 0) {
+            const pct = ((tvlNow - tvlDeploy) / tvlDeploy * 100).toFixed(1);
+            const arrow = pct >= 0 ? "▲" : "▼";
+            lines34.push(`  TVL    ${cur}${Math.round(tvlDeploy).toLocaleString()} → ${cur}${Math.round(tvlNow).toLocaleString()}  ${arrow}${Math.abs(pct)}%`);
+          } else {
+            lines34.push(`  TVL    ${cur}${Math.round(tvlNow).toLocaleString()}`);
+          }
         }
       }
 

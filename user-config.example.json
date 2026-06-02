@@ -70,6 +70,12 @@
   "pnlSanityMaxDiffPct": 5,
   "solMode": false,
 
+  "dumpDetectionEnabled": true,
+  "dumpMinSignals": 1,
+  "dumpCheckIntervalSec": 15,
+  "dumpPriceDropPct": -15,
+  "dumpTvlDropPct": -30,
+
   "managementIntervalMin": 10,
   "screeningIntervalMin": 30,
   "healthCheckIntervalMin": 60,

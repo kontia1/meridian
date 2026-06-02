@@ -57,6 +57,7 @@ export function trackPosition({
   position,
   pool,
   pool_name,
+  base_mint = null,
   strategy,
   bin_range = {},
   amount_sol,
@@ -74,6 +75,7 @@ export function trackPosition({
     position,
     pool,
     pool_name,
+    base_mint,
     strategy,
     bin_range,
     amount_sol,
@@ -93,7 +95,10 @@ export function trackPosition({
     rebalance_count: 0,
     closed: false,
     closed_at: null,
+    close_reason: null,
     notes: [],
+    tvl_at_deploy: null,
+    price_at_deploy: null,
     peak_pnl_pct: 0,
     pending_peak_pnl_pct: null,
     pending_peak_started_at: null,
@@ -164,6 +169,20 @@ export function recordClaim(position_address, fees_usd) {
 }
 
 /**
+ * Record TVL, mcap, and price at deploy time — used by dump detector as baselines.
+ * Called asynchronously after deploy so it doesn't block the deploy tx.
+ */
+export function setDeployBaseline(position_address, { tvl, price }) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return;
+  if (tvl   != null) pos.tvl_at_deploy   = tvl;
+  if (price != null) pos.price_at_deploy = price;
+  save(state);
+  log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} Price=$${price ?? "?"}`);
+}
+
+/**
  * Append to the recent events log (shown in every prompt).
  */
 function pushEvent(state, event) {
@@ -183,6 +202,7 @@ export function recordClose(position_address, reason) {
   if (!pos) return;
   pos.closed = true;
   pos.closed_at = new Date().toISOString();
+  pos.close_reason = reason || null;
   pos.notes.push(`Closed at ${pos.closed_at}: ${reason}`);
   pushEvent(state, { action: "close", position: position_address, pool_name: pos.pool_name || pos.pool, reason });
   save(state);

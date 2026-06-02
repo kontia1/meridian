@@ -636,7 +636,7 @@ export async function executeTool(name, args) {
         notifyDeploy({ pair: result.pool_name || args.pool_name || args.pool_address?.slice(0, 8), amountSol: args.amount_y ?? args.amount_sol ?? 0, position: result.position, tx: result.txs?.[0] ?? result.tx, priceRange: result.price_range, rangeCoverage: result.range_coverage, binStep: result.bin_step, baseFee: result.base_fee }).catch(() => {});
         // Fire-and-forget: record pool_price + TVL at deploy as dump detection baselines
         if (result.position && (args.pool_address || result.pool)) {
-          fetchDumpContext(args.pool_address || result.pool)
+          fetchDumpContext(args.pool_address || result.pool, { withUsdPrice: true })
             .then(({ poolDetail, usdPrice }) => {
               setDeployBaseline(result.position, {
                 tvl:      poolDetail?.tvl ?? poolDetail?.active_tvl ?? null,

@@ -35,12 +35,13 @@ async function fetchUsdPrice(mint) {
   }
 }
 
-export async function fetchDumpContext(pool_address) {
+export async function fetchDumpContext(pool_address, { withUsdPrice = false } = {}) {
   if (!pool_address) return { poolDetail: null, usdPrice: null };
   try {
     const poolDetail = await getPoolDetail({ pool_address, timeframe: "5m" });
-    const mint = poolDetail?.token_x?.address ?? null;
-    const usdPrice = await fetchUsdPrice(mint);
+    const usdPrice = withUsdPrice
+      ? await fetchUsdPrice(poolDetail?.token_x?.address ?? null)
+      : null;
     return { poolDetail, usdPrice };
   } catch (e) {
     log("dump_warn", `fetchDumpContext failed for ${pool_address}: ${e.message}`);

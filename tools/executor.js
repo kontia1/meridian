@@ -12,7 +12,7 @@ import {
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction, setDeployBaseline, getTrackedPosition } from "../state.js";
+import { setPositionInstruction, setDeployBaseline, getTrackedPosition, recordClose } from "../state.js";
 import { fetchDumpContext, checkDumpSignals } from "./dump-detector.js";
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
@@ -424,6 +424,7 @@ const toolMap = {
       // dump detection
       dumpDetectionEnabled:  ["management", "dumpDetectionEnabled"],
       dumpMinSignals:        ["management", "dumpMinSignals"],
+      dumpGracePeriodMin:    ["management", "dumpGracePeriodMin"],
       dumpCheckIntervalSec:  ["management", "dumpCheckIntervalSec"],
       dumpPriceDrop5mPct:    ["management", "dumpPriceDrop5mPct"],
       dumpLpRemovalPct:      ["management", "dumpLpRemovalPct"],
@@ -730,6 +731,9 @@ export async function executeTool(name, args) {
             .catch(() => {}); // non-fatal
         }
       } else if (name === "close_position") {
+        if (args.position_address) {
+          recordClose(args.position_address, args.reason ?? "closed");
+        }
         notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch(() => {});
         if (process.env.MERIDIAN_PROFILE === "autoresearch" && config.autoresearch?.runId) {
           writeRunResult(config.autoresearch.runId, result, args);

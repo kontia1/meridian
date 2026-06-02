@@ -76,6 +76,7 @@
 
   "dumpDetectionEnabled": true,
   "dumpMinSignals": 1,
+  "dumpGracePeriodMin": 5,
   "dumpCheckIntervalSec": 60,
   "dumpPriceDrop5mPct": -15,
   "dumpLpRemovalPct": -30,

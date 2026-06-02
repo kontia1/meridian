@@ -640,7 +640,7 @@ export async function executeTool(name, args) {
             .then(({ poolDetail }) => {
               setDeployBaseline(result.position, {
                 tvl:   poolDetail?.tvl ?? poolDetail?.active_tvl ?? null,
-                price: poolDetail?.price ?? null,
+                price: poolDetail?.pool_price ?? poolDetail?.price ?? null,
               });
             })
             .catch(() => {});

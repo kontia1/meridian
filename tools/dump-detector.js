@@ -38,7 +38,7 @@ export function checkDumpSignals(trackedPos, poolDetail, cfg) {
   const metrics = {};
   const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";
 
-  const currentPrice = poolDetail?.price ?? null;
+  const currentPrice = poolDetail?.pool_price ?? poolDetail?.price ?? null;
   const currentTvl   = poolDetail?.tvl ?? poolDetail?.active_tvl ?? null;
   const priceAtDeploy = trackedPos.price_at_deploy ?? null;
   const tvlAtDeploy   = trackedPos.tvl_at_deploy   ?? null;

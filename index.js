@@ -324,7 +324,7 @@ export async function runManagementCycle({ silent = false } = {}) {
       const ctx = poolContextMap.get(p.position);
       if (ctx) {
         const { poolDetail, tracked } = ctx;
-        const pNow    = poolDetail.price ?? null;
+        const pNow    = poolDetail.pool_price ?? poolDetail.price ?? null;
         const pDeploy = tracked.price_at_deploy ?? null;
         const tvlNow    = poolDetail.tvl ?? poolDetail.active_tvl ?? null;
         const tvlDeploy = tracked.tvl_at_deploy ?? null;

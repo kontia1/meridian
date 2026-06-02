@@ -22,14 +22,29 @@
 import { getPoolDetail } from "./screening.js";
 import { log } from "../logger.js";
 
+async function fetchUsdPrice(mint) {
+  if (!mint) return null;
+  try {
+    const res = await fetch(`https://lite-api.jup.ag/price/v2?ids=${mint}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const price = data?.data?.[mint]?.price;
+    return price != null ? parseFloat(price) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchDumpContext(pool_address) {
-  if (!pool_address) return { poolDetail: null };
+  if (!pool_address) return { poolDetail: null, usdPrice: null };
   try {
     const poolDetail = await getPoolDetail({ pool_address, timeframe: "5m" });
-    return { poolDetail };
+    const mint = poolDetail?.token_x?.address ?? null;
+    const usdPrice = await fetchUsdPrice(mint);
+    return { poolDetail, usdPrice };
   } catch (e) {
     log("dump_warn", `fetchDumpContext failed for ${pool_address}: ${e.message}`);
-    return { poolDetail: null };
+    return { poolDetail: null, usdPrice: null };
   }
 }
 

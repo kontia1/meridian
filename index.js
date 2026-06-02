@@ -290,9 +290,10 @@ export async function runManagementCycle({ silent = false } = {}) {
     await Promise.allSettled(
       positionData.map(async (p) => {
         const tracked = getTrackedPosition(p.position);
-        if (!tracked?.pool) return;
-        const { poolDetail } = await fetchDumpContext(tracked.pool);
-        if (poolDetail) poolContextMap.set(p.position, { poolDetail, tracked });
+        const pool = tracked?.pool || p.pool;
+        if (!pool) return;
+        const { poolDetail } = await fetchDumpContext(pool);
+        if (poolDetail) poolContextMap.set(p.position, { poolDetail, tracked: tracked || {} });
       })
     );
 
@@ -301,19 +302,25 @@ export async function runManagementCycle({ silent = false } = {}) {
     const reportLines = positionData.map((p) => {
       const act = actionMap.get(p.position);
 
-      // Line 1 — pair, range status, age, action
+      // Line 1 — pair name only
+      const line1 = `${p.pair}`;
+
+      // Line 2 — age, range status, action
       const rangeIcon = p.in_range ? "🟢" : "🔴";
       const rangeLabel = p.in_range ? "in range" : `OOR ${p.minutes_out_of_range ?? 0}m`;
       const actionLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)"
         : act.action === "STAY" ? "hold" : act.action;
-      const line1 = `${p.pair}  ${rangeIcon} ${rangeLabel}  age ${p.age_minutes ?? "?"}m  →  ${actionLabel}`;
+      const line2 = `Age ${p.age_minutes ?? "?"}m ${rangeIcon} ${rangeLabel}  →  ${actionLabel}`;
 
-      // Line 2 — val, fees, pnl, yield
+      // Line 3 — val and pnl
       const pnlSign = (p.pnl_pct ?? 0) >= 0 ? "+" : "";
-      const line2 = `  ${cur}${p.total_value_usd ?? "?"} val  ${cur}${p.unclaimed_fees_usd ?? "?"} fees  PnL ${pnlSign}${p.pnl_pct ?? "?"}%  yield ${p.fee_per_tvl_24h ?? "?"}%`;
+      const line3 = `Val ${cur}${p.total_value_usd ?? "?"} | PnL ${pnlSign}${p.pnl_pct ?? "?"}%`;
 
-      // Lines 3–4 — price and TVL vs deploy
-      const lines34 = [];
+      // Line 4 — yield and fees
+      const line4 = `Yield ${p.fee_per_tvl_24h ?? "?"}% | Fee ${cur}${p.unclaimed_fees_usd ?? "?"}`;
+
+      // Lines 5–6 — price and TVL vs deploy
+      const lines56 = [];
       const ctx = poolContextMap.get(p.position);
       if (ctx) {
         const { poolDetail, tracked } = ctx;
@@ -325,19 +332,19 @@ export async function runManagementCycle({ silent = false } = {}) {
         if (pNow != null) {
           if (pDeploy != null && pDeploy > 0) {
             const pct = ((pNow - pDeploy) / pDeploy * 100).toFixed(1);
-            const arrow = pct >= 0 ? "▲" : "▼";
-            lines34.push(`  Price  $${pDeploy.toFixed(6)} → $${pNow.toFixed(6)}  ${arrow}${Math.abs(pct)}%`);
+            const arrow = Number(pct) >= 0 ? "▲" : "▼";
+            lines56.push(`Price  $${pDeploy.toFixed(6)} → $${pNow.toFixed(6)}  ${arrow}${Math.abs(pct)}%`);
           } else {
-            lines34.push(`  Price  $${pNow.toFixed(6)}`);
+            lines56.push(`Price  $${pNow.toFixed(6)}`);
           }
         }
         if (tvlNow != null) {
           if (tvlDeploy != null && tvlDeploy > 0) {
             const pct = ((tvlNow - tvlDeploy) / tvlDeploy * 100).toFixed(1);
-            const arrow = pct >= 0 ? "▲" : "▼";
-            lines34.push(`  TVL    ${cur}${Math.round(tvlDeploy).toLocaleString()} → ${cur}${Math.round(tvlNow).toLocaleString()}  ${arrow}${Math.abs(pct)}%`);
+            const arrow = Number(pct) >= 0 ? "▲" : "▼";
+            lines56.push(`TVL    ${cur}${Math.round(tvlDeploy).toLocaleString()} → ${cur}${Math.round(tvlNow).toLocaleString()}  ${arrow}${Math.abs(pct)}%`);
           } else {
-            lines34.push(`  TVL    ${cur}${Math.round(tvlNow).toLocaleString()}`);
+            lines56.push(`TVL    ${cur}${Math.round(tvlNow).toLocaleString()}`);
           }
         }
       }
@@ -349,7 +356,7 @@ export async function runManagementCycle({ silent = false } = {}) {
       if (act.action === "CLOSE" && act.rule && act.rule !== "exit") extras.push(`  ⚠️ ${act.reason}`);
       if (act.action === "CLAIM")                        extras.push(`  → claiming fees`);
 
-      return [line1, line2, ...lines34, ...extras].join("\n");
+      return [line1, line2, line3, line4, ...lines56, ...extras].join("\n");
     });
 
     const needsAction = [...actionMap.values()].filter(a => a.action !== "STAY");

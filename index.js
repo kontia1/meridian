@@ -22,6 +22,7 @@ import {
   editMessageWithButtons,
   answerCallbackQuery,
   notifyOutOfRange,
+  notifyDump,
   isEnabled as telegramEnabled,
   createLiveMessage,
 } from "./telegram.js";
@@ -35,6 +36,7 @@ import { stageSignals } from "./signal-tracker.js";
 import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
 import { appendDecision } from "./decision-log.js";
+import { fetchDumpContext, checkDumpSignals } from "./tools/dump-detector.js";
 
 const entrypointPath = process.env.pm_exec_path || process.argv[1];
 const isMain = entrypointPath
@@ -194,6 +196,7 @@ async function maybeRunMissedBriefing() {
 function stopCronJobs() {
   for (const task of _cronTasks) task.stop();
   if (_cronTasks._pnlPollInterval) clearInterval(_cronTasks._pnlPollInterval);
+  if (_cronTasks._dumpCheckInterval) clearInterval(_cronTasks._dumpCheckInterval);
   _cronTasks = [];
 }
 
@@ -282,18 +285,63 @@ export async function runManagementCycle({ silent = false } = {}) {
     const totalValue = positionData.reduce((s, p) => s + (p.total_value_usd ?? 0), 0);
     const totalUnclaimed = positionData.reduce((s, p) => s + (p.unclaimed_fees_usd ?? 0), 0);
 
+    // Fetch current pool price + TVL for all positions in parallel (for deploy comparison)
+    const poolContextMap = new Map();
+    await Promise.allSettled(
+      positionData.map(async (p) => {
+        const tracked = getTrackedPosition(p.position);
+        if (!tracked?.pool) return;
+        const { poolDetail } = await fetchDumpContext(tracked.pool);
+        if (poolDetail) poolContextMap.set(p.position, { poolDetail, tracked });
+      })
+    );
+
+    const cur = config.management.solMode ? "◎" : "$";
+
     const reportLines = positionData.map((p) => {
       const act = actionMap.get(p.position);
-      const inRange = p.in_range ? "🟢 IN" : `🔴 OOR ${p.minutes_out_of_range ?? 0}m`;
-      const val = config.management.solMode ? `◎${p.total_value_usd ?? "?"}` : `$${p.total_value_usd ?? "?"}`;
-      const unclaimed = config.management.solMode ? `◎${p.unclaimed_fees_usd ?? "?"}` : `$${p.unclaimed_fees_usd ?? "?"}`;
-      const statusLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)" : act.action;
-      let line = `**${p.pair}** | Age: ${p.age_minutes ?? "?"}m | Val: ${val} | Unclaimed: ${unclaimed} | PnL: ${p.pnl_pct ?? "?"}% | Yield: ${p.fee_per_tvl_24h ?? "?"}% | ${inRange} | ${statusLabel}`;
-      if (p.instruction) line += `\nNote: "${p.instruction}"`;
-      if (act.action === "CLOSE" && act.rule === "exit") line += `\n⚡ Trailing TP: ${act.reason}`;
-      if (act.action === "CLOSE" && act.rule && act.rule !== "exit") line += `\nRule ${act.rule}: ${act.reason}`;
-      if (act.action === "CLAIM") line += `\n→ Claiming fees`;
-      return line;
+
+      // Line 1 — pair, range, age, action
+      const rangeIcon = p.in_range ? "🟢" : "🔴";
+      const rangeLabel = p.in_range ? "in range" : `OOR ${p.minutes_out_of_range ?? 0}m`;
+      const actionLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)"
+        : act.action === "STAY" ? "hold" : act.action;
+      const line1 = `${p.pair}  ${rangeIcon} ${rangeLabel}  ${p.age_minutes ?? "?"}m  →  ${actionLabel}`;
+
+      // Line 2 — val, fees, pnl, yield
+      const pnlSign = (p.pnl_pct ?? 0) >= 0 ? "+" : "";
+      const line2 = `  ${cur}${p.total_value_usd ?? "?"} val  ${cur}${p.unclaimed_fees_usd ?? "?"} fees  PnL ${pnlSign}${p.pnl_pct ?? "?"}%  yield ${p.fee_per_tvl_24h ?? "?"}%`;
+
+      // Lines 3–4 — price and TVL vs deploy
+      const lines34 = [];
+      const ctx = poolContextMap.get(p.position);
+      if (ctx) {
+        const { poolDetail, tracked } = ctx;
+        const pNow    = poolDetail.price ?? null;
+        const pDeploy = tracked.price_at_deploy ?? null;
+        const tvlNow    = poolDetail.tvl ?? poolDetail.active_tvl ?? null;
+        const tvlDeploy = tracked.tvl_at_deploy ?? null;
+
+        if (pNow != null && pDeploy != null && pDeploy > 0) {
+          const pct = ((pNow - pDeploy) / pDeploy * 100).toFixed(1);
+          const arrow = pct >= 0 ? "▲" : "▼";
+          lines34.push(`  Price  $${pDeploy.toFixed(6)} → $${pNow.toFixed(6)}  ${arrow}${Math.abs(pct)}%`);
+        }
+        if (tvlNow != null && tvlDeploy != null && tvlDeploy > 0) {
+          const pct = ((tvlNow - tvlDeploy) / tvlDeploy * 100).toFixed(1);
+          const arrow = pct >= 0 ? "▲" : "▼";
+          lines34.push(`  TVL    ${cur}${Math.round(tvlDeploy).toLocaleString()} → ${cur}${Math.round(tvlNow).toLocaleString()}  ${arrow}${Math.abs(pct)}%`);
+        }
+      }
+
+      // Extra lines — notes and action reasons
+      const extras = [];
+      if (p.instruction)                                extras.push(`  📌 "${p.instruction}"`);
+      if (act.action === "CLOSE" && act.rule === "exit") extras.push(`  ⚡ ${act.reason}`);
+      if (act.action === "CLOSE" && act.rule && act.rule !== "exit") extras.push(`  ⚠️ ${act.reason}`);
+      if (act.action === "CLAIM")                        extras.push(`  → claiming fees`);
+
+      return [line1, line2, ...lines34, ...extras].join("\n");
     });
 
     const needsAction = [...actionMap.values()].filter(a => a.action !== "STAY");
@@ -301,9 +349,11 @@ export async function runManagementCycle({ silent = false } = {}) {
       ? needsAction.map(a => a.action === "INSTRUCTION" ? "EVAL instruction" : `${a.action}${a.reason ? ` (${a.reason})` : ""}`).join(", ")
       : "no action";
 
-    const cur = config.management.solMode ? "◎" : "$";
+    const totalValue = positionData.reduce((s, p) => s + (p.total_value_usd ?? 0), 0);
+    const totalUnclaimed = positionData.reduce((s, p) => s + (p.unclaimed_fees_usd ?? 0), 0);
+
     mgmtReport = reportLines.join("\n\n") +
-      `\n\nSummary: 💼 ${positions.length} positions | ${cur}${totalValue.toFixed(4)} | fees: ${cur}${totalUnclaimed.toFixed(4)} | ${actionSummary}`;
+      `\n\n─────\n${positions.length} pos  ${cur}${totalValue.toFixed(2)} val  ${cur}${totalUnclaimed.toFixed(2)} fees  ${actionSummary}`;
 
     // ── Call LLM only if action needed ──────────────────────────────
     const actionPositions = positionData.filter(p => {
@@ -800,7 +850,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
     await maybeRunMissedBriefing();
   }, { timezone: 'UTC' });
 
-  // Lightweight 30s PnL poller — updates trailing TP state between management cycles, no LLM
+  // 30s PnL poller — SL fires direct close (no LLM), other exits trigger management cycle
   let _pnlPollBusy = false;
   const pnlPollInterval = setInterval(async () => {
     if (_managementBusy || _screeningBusy || _pnlPollBusy) return;
@@ -825,6 +875,16 @@ Summarize the current portfolio health, total fees earned, and performance of al
             }
             continue;
           }
+          // STOP_LOSS: direct close immediately, no LLM — price is already moving fast
+          if (exit.action === "STOP_LOSS") {
+            log("state", `[PnL poll] STOP_LOSS: ${p.pair} — ${exit.reason} — closing directly`);
+            executeTool("close_position", {
+              position_address: p.position,
+              reason: exit.reason,
+            }).catch((e) => log("cron_error", `Direct SL close failed [${p.pair}]: ${e.message}`));
+            break;
+          }
+          // Other exits (trailing TP, OOR, low yield) — trigger management cycle
           const cooldownMs = config.schedule.managementIntervalMin * 60 * 1000;
           const sinceLastTrigger = Date.now() - _pollTriggeredAt;
           if (sinceLastTrigger >= cooldownMs) {
@@ -855,10 +915,51 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }
   }, 30_000);
 
+  // Dump detection — runs independently on its own interval (default 60s)
+  let _dumpCheckBusy = false;
+  const dumpCheckIntervalMs = Math.max(10, config.management.dumpCheckIntervalSec ?? 60) * 1000;
+  const dumpCheckInterval = config.management.dumpDetectionEnabled
+    ? setInterval(async () => {
+        if (_managementBusy || _dumpCheckBusy) return;
+        const openPositions = getTrackedPositions(true);
+        if (openPositions.length === 0) return;
+        _dumpCheckBusy = true;
+        try {
+          for (const trackedPos of openPositions) {
+            const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";
+            const { poolDetail } = await fetchDumpContext(trackedPos.pool);
+            const { isDump, reason, metrics } = checkDumpSignals(
+              trackedPos,
+              poolDetail,
+              config.management
+            );
+            if (!isDump) continue;
+            if (telegramEnabled()) notifyDump({ pair, metrics }).catch(() => {});
+            log("dump_warn", `[${pair}] Closing position immediately — ${trackedPos.position}`);
+            executeTool("close_position", {
+              position_address: trackedPos.position,
+              reason,
+            }).then((result) => {
+              log("dump_warn", `[${pair}] Closed — ${result?.success ? "OK" : JSON.stringify(result)}`);
+            }).catch((e) => {
+              log("cron_error", `Dump close failed [${pair}]: ${e.message}`);
+            });
+          }
+        } finally {
+          _dumpCheckBusy = false;
+        }
+      }, dumpCheckIntervalMs)
+    : null;
+
   _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
-  // Store interval ref so stopCronJobs can clear it
+  // Store interval refs so stopCronJobs can clear them
   _cronTasks._pnlPollInterval = pnlPollInterval;
-  log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m`);
+  _cronTasks._dumpCheckInterval = dumpCheckInterval;
+
+  const dumpStatus = config.management.dumpDetectionEnabled
+    ? `dump check every ${config.management.dumpCheckIntervalSec}s (min signals: ${config.management.dumpMinSignals})`
+    : "dump check disabled";
+  log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m, ${dumpStatus}`);
 }
 
 // ═══════════════════════════════════════════

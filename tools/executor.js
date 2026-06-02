@@ -12,7 +12,9 @@ import {
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction } from "../state.js";
+import { setPositionInstruction, recordClose, setDeployBaseline } from "../state.js";
+import { fetchDumpContext } from "./dump-detector.js";
+
 
 import { getPoolMemory, addPoolNote } from "../pool-memory.js";
 import { addStrategy, listStrategies, getStrategy, setActiveStrategy, removeStrategy } from "../strategy-library.js";
@@ -346,6 +348,12 @@ const toolMap = {
       gasReserve: ["management", "gasReserve"],
       positionSizePct: ["management", "positionSizePct"],
       minAgeBeforeYieldCheck: ["management", "minAgeBeforeYieldCheck"],
+      // dump detection
+      dumpDetectionEnabled: ["management", "dumpDetectionEnabled"],
+      dumpMinSignals:       ["management", "dumpMinSignals"],
+      dumpCheckIntervalSec: ["management", "dumpCheckIntervalSec"],
+      dumpPriceDropPct:     ["management", "dumpPriceDropPct"],
+      dumpTvlDropPct:       ["management", "dumpTvlDropPct"],
       // risk
       maxPositions: ["risk", "maxPositions"],
       maxDeployAmount: ["risk", "maxDeployAmount"],
@@ -626,8 +634,22 @@ export async function executeTool(name, args) {
         notifySwap({ inputSymbol: args.input_mint?.slice(0, 8), outputSymbol: args.output_mint === "So11111111111111111111111111111111111111112" || args.output_mint === "SOL" ? "SOL" : args.output_mint?.slice(0, 8), amountIn: result.amount_in, amountOut: result.amount_out, tx: result.tx }).catch(() => {});
       } else if (name === "deploy_position") {
         notifyDeploy({ pair: result.pool_name || args.pool_name || args.pool_address?.slice(0, 8), amountSol: args.amount_y ?? args.amount_sol ?? 0, position: result.position, tx: result.txs?.[0] ?? result.tx, priceRange: result.price_range, rangeCoverage: result.range_coverage, binStep: result.bin_step, baseFee: result.base_fee }).catch(() => {});
+        // Fire-and-forget: record pool_price + TVL at deploy as dump detection baselines
+        if (result.position && (args.pool_address || result.pool)) {
+          fetchDumpContext(args.pool_address || result.pool)
+            .then(({ poolDetail }) => {
+              setDeployBaseline(result.position, {
+                tvl:   poolDetail?.tvl ?? poolDetail?.active_tvl ?? null,
+                price: poolDetail?.price ?? null,
+              });
+            })
+            .catch(() => {});
+        }
       } else if (name === "close_position") {
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0 }).catch(() => {});
+        if (args.position_address) {
+          recordClose(args.position_address, args.reason ?? "closed");
+        }
+        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch(() => {});
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (args.reason && args.reason.toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;

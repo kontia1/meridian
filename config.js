@@ -194,6 +194,12 @@ export const config = {
     pnlSanityMaxDiffPct:   u.pnlSanityMaxDiffPct   ?? 5,    // max allowed diff between reported and derived pnl % before ignoring a tick
     // SOL mode — positions, PnL, and balances reported in SOL instead of USD
     solMode:               u.solMode               ?? false,
+    // Dump detection
+    dumpDetectionEnabled: u.dumpDetectionEnabled ?? true,
+    dumpMinSignals:       u.dumpMinSignals       ?? 1,
+    dumpCheckIntervalSec: u.dumpCheckIntervalSec ?? 15,
+    dumpPriceDropPct:     u.dumpPriceDropPct     ?? -15,
+    dumpTvlDropPct:       u.dumpTvlDropPct       ?? -30,
   },
 
   // ─── Strategy Mapping ───────────────────

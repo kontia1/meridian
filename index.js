@@ -938,12 +938,6 @@ Summarize the current portfolio health, total fees earned, and performance of al
         try {
           for (const trackedPos of openPositions) {
             if (!trackedPos.pool) continue;
-            const gracePeriodMs = (config.management.dumpGracePeriodMin ?? 5) * 60_000;
-            if (trackedPos.deployed_at && (Date.now() - new Date(trackedPos.deployed_at).getTime()) < gracePeriodMs) {
-              const ageMin = Math.floor((Date.now() - new Date(trackedPos.deployed_at).getTime()) / 60_000);
-              log("dump", `[${trackedPos.pool_name || trackedPos.pool?.slice(0, 8)}] Skipping dump check — grace period (${ageMin}/${config.management.dumpGracePeriodMin}min)`);
-              continue;
-            }
             const { poolDetail, tokenInfo } = await fetchDumpContext(
               trackedPos.pool,
               trackedPos.base_mint || null,
@@ -952,11 +946,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
               trackedPos, poolDetail, tokenInfo, config.management,
             );
             const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "?";
-            if (!isDump) {
-              log("dump", `[${pair}] OK — no dump signals (checked ${signals?.length ?? 0} active)`);
-              continue;
-            }
-            log("dump_warn", reason);
+            if (!isDump) continue;
             if (telegramEnabled()) sendMessage(reason).catch(() => {});
 
             // Langsung close tanpa tunggu LLM — dump = emergency, tidak perlu deliberasi

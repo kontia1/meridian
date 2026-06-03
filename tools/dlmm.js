@@ -22,6 +22,7 @@ import {
   getTrackedPosition,
   minutesOutOfRange,
   syncOpenPositions,
+  isPositionClosing,
 } from "../state.js";
 import { recordPerformance } from "../lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
@@ -1460,8 +1461,11 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
       const autoClosed = syncOpenPositions(positions.map(p => p.position));
       if (autoClosed.length > 0) {
         const { notifyClose } = await import("../telegram.js");
-        for (const { pool_name } of autoClosed) {
-          notifyClose({ pair: pool_name, noPnl: true, reason: "auto-closed (not found on-chain)" }).catch(() => {});
+        for (const { position_address, pool_name, last_pnl_usd, last_pnl_pct } of autoClosed) {
+          // Skip if a close is already in-flight for this position (prevents duplicate notification)
+          if (isPositionClosing(position_address)) continue;
+          const hasPnl = last_pnl_usd != null || last_pnl_pct != null;
+          notifyClose({ pair: pool_name, pnlUsd: last_pnl_usd ?? 0, pnlPct: last_pnl_pct ?? 0, noPnl: !hasPnl, reason: "auto-closed (not found on-chain)" }).catch(() => {});
         }
       }
       _positionsCache = result;

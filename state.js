@@ -48,6 +48,12 @@ function save(state) {
   }
 }
 
+// ─── In-flight close tracking (prevents duplicate auto-sync notifications) ─────
+const _closingPositions = new Set();
+export function markPositionClosing(addr) { if (addr) _closingPositions.add(addr); }
+export function unmarkPositionClosing(addr) { if (addr) _closingPositions.delete(addr); }
+export function isPositionClosing(addr) { return addr ? _closingPositions.has(addr) : false; }
+
 // ─── Position Registry ─────────────────────────────────────────
 
 /**
@@ -181,6 +187,15 @@ export function setDeployBaseline(position_address, { tvl, price, usdPrice }) {
   if (usdPrice != null) pos.usd_price_at_deploy  = usdPrice;
   save(state);
   log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} USD=$${usdPrice ?? "?"}`);
+}
+
+export function setLastPnl(position_address, { pnlUsd, pnlPct }) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return;
+  if (pnlUsd != null) pos.last_pnl_usd = pnlUsd;
+  if (pnlPct != null) pos.last_pnl_pct = pnlPct;
+  save(state);
 }
 
 /**
@@ -548,7 +563,7 @@ export function syncOpenPositions(active_addresses) {
     pos.close_reason = pos.close_reason || "auto-closed (not found on-chain)";
     pos.notes.push(`Auto-closed during state sync (not found on-chain)`);
     changed = true;
-    autoClosed.push({ position_address: posId, pool_name: pos.pool_name || pos.pool });
+    autoClosed.push({ position_address: posId, pool_name: pos.pool_name || pos.pool, last_pnl_usd: pos.last_pnl_usd ?? null, last_pnl_pct: pos.last_pnl_pct ?? null });
     log("state", `Position ${posId} auto-closed (missing from on-chain data)`);
   }
 

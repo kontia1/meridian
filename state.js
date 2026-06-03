@@ -183,6 +183,15 @@ export function setDeployBaseline(position_address, { tvl, price, usdPrice }) {
   log("state", `Dump baseline set for ${position_address}: TVL=$${Math.round(tvl ?? 0).toLocaleString()} USD=$${usdPrice ?? "?"}`);
 }
 
+export function setLastPnl(position_address, { pnlUsd, pnlPct }) {
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return;
+  if (pnlUsd != null) pos.last_pnl_usd = pnlUsd;
+  if (pnlPct != null) pos.last_pnl_pct = pnlPct;
+  save(state);
+}
+
 /**
  * Append to the recent events log (shown in every prompt).
  */
@@ -548,7 +557,7 @@ export function syncOpenPositions(active_addresses) {
     pos.close_reason = pos.close_reason || "auto-closed (not found on-chain)";
     pos.notes.push(`Auto-closed during state sync (not found on-chain)`);
     changed = true;
-    autoClosed.push({ position_address: posId, pool_name: pos.pool_name || pos.pool });
+    autoClosed.push({ position_address: posId, pool_name: pos.pool_name || pos.pool, last_pnl_usd: pos.last_pnl_usd ?? null, last_pnl_pct: pos.last_pnl_pct ?? null });
     log("state", `Position ${posId} auto-closed (missing from on-chain data)`);
   }
 

@@ -530,6 +530,7 @@ export function syncOpenPositions(active_addresses) {
   const state = load();
   const activeSet = new Set(active_addresses);
   let changed = false;
+  const autoClosed = [];
 
   for (const posId in state.positions) {
     const pos = state.positions[posId];
@@ -544,10 +545,13 @@ export function syncOpenPositions(active_addresses) {
 
     pos.closed = true;
     pos.closed_at = new Date().toISOString();
+    pos.close_reason = pos.close_reason || "auto-closed (not found on-chain)";
     pos.notes.push(`Auto-closed during state sync (not found on-chain)`);
     changed = true;
+    autoClosed.push({ position_address: posId, pool_name: pos.pool_name || pos.pool });
     log("state", `Position ${posId} auto-closed (missing from on-chain data)`);
   }
 
   if (changed) save(state);
+  return autoClosed;
 }

@@ -456,12 +456,13 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
   );
 }
 
-export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
+export async function notifyClose({ pair, pnlUsd, pnlPct, reason, noPnl = false }) {
   const sign = pnlUsd >= 0 ? "+" : "";
+  const pnlLine = noPnl ? "" : `\nPnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`;
   const reasonLine = reason ? `\nReason: ${reason}` : "";
   await sendHTML(
-    `🔒 <b>Closed</b> ${pair}\n` +
-    `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)` +
+    `🔒 <b>Closed</b> ${pair}` +
+    pnlLine +
     reasonLine
   );
 }

@@ -1457,7 +1457,13 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
       request_id: relayRequestId,
     };
     if (useLocalWallet) {
-      syncOpenPositions(positions.map(p => p.position));
+      const autoClosed = syncOpenPositions(positions.map(p => p.position));
+      if (autoClosed.length > 0) {
+        const { notifyClose } = await import("../telegram.js");
+        for (const { pool_name } of autoClosed) {
+          notifyClose({ pair: pool_name, noPnl: true, reason: "auto-closed (not found on-chain)" }).catch(() => {});
+        }
+      }
       _positionsCache = result;
       _positionsCacheAt = Date.now();
     }

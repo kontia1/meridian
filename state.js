@@ -48,6 +48,12 @@ function save(state) {
   }
 }
 
+// ─── In-flight close tracking (prevents duplicate auto-sync notifications) ─────
+const _closingPositions = new Set();
+export function markPositionClosing(addr) { if (addr) _closingPositions.add(addr); }
+export function unmarkPositionClosing(addr) { if (addr) _closingPositions.delete(addr); }
+export function isPositionClosing(addr) { return addr ? _closingPositions.has(addr) : false; }
+
 // ─── Position Registry ─────────────────────────────────────────
 
 /**

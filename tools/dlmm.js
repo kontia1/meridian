@@ -1465,7 +1465,7 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
           // Skip if a close is already in-flight for this position (prevents duplicate notification)
           if (isPositionClosing(position_address)) continue;
           const hasPnl = last_pnl_usd != null || last_pnl_pct != null;
-          notifyClose({ pair: pool_name, pnlUsd: last_pnl_usd ?? 0, pnlPct: last_pnl_pct ?? 0, noPnl: !hasPnl, reason: "auto-closed (not found on-chain)" }).catch(() => {});
+          notifyClose({ pair: pool_name, pnlUsd: last_pnl_usd ?? 0, pnlPct: last_pnl_pct ?? 0, noPnl: !hasPnl, reason: "auto-closed (not found on-chain)" }).catch((e) => log("telegram_warn", `notifyClose auto-sync failed for ${pool_name}: ${e.message}`));
         }
       }
       _positionsCache = result;

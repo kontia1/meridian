@@ -1461,7 +1461,7 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
       if (autoClosed.length > 0) {
         const { notifyClose } = await import("../telegram.js");
         for (const { pool_name } of autoClosed) {
-          notifyClose({ pair: pool_name, pnlUsd: 0, pnlPct: 0, reason: "auto-closed (not found on-chain)" }).catch(() => {});
+          notifyClose({ pair: pool_name, noPnl: true, reason: "auto-closed (not found on-chain)" }).catch(() => {});
         }
       }
       _positionsCache = result;

@@ -653,7 +653,7 @@ export async function executeTool(name, args) {
         if (args.position_address) {
           recordClose(args.position_address, args.reason ?? "closed");
         }
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch(() => {});
+        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch((e) => log("telegram_warn", `notifyClose failed for ${result.pool_name || args.position_address?.slice(0, 8)}: ${e.message}`));
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (args.reason && args.reason.toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;

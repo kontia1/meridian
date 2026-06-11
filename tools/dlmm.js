@@ -1472,7 +1472,7 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
       }
 
       // Retry any close notifications that failed to send earlier (pos.closed=true but notifyClose failed)
-      const pendingNotify = getPendingCloseNotifications(10_000);
+      const pendingNotify = getPendingCloseNotifications(30_000);
       if (pendingNotify.length > 0) {
         const { notifyClose } = await import("../telegram.js");
         for (const { position_address, pool_name, pnl_usd, pnl_pct, reason } of pendingNotify) {

@@ -434,6 +434,11 @@ export function stopPolling() {
 }
 
 // ─── Notification helpers ────────────────────────────────────────
+function esc(str) {
+  if (str == null) return "";
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, rangeCoverage, binStep, baseFee }) {
   if (hasActiveLiveMessage()) return;
   const priceStr = priceRange
@@ -459,8 +464,8 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
 export async function notifyClose({ pair, pnlUsd, pnlPct, reason, noPnl = false }) {
   const sign = pnlUsd >= 0 ? "+" : "";
   const pnlLine = noPnl ? "" : `\nPnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`;
-  const reasonLine = reason ? `\nReason: ${reason}` : "";
-  const html = `🔒 <b>Closed</b> ${pair}` + pnlLine + reasonLine;
+  const reasonLine = reason ? `\nReason: ${esc(reason)}` : "";
+  const html = `🔒 <b>Closed</b> ${esc(pair)}` + pnlLine + reasonLine;
   const sent = await sendHTML(html);
   // Retry once after 5s if Telegram returned an error (null = failure, undefined = not configured)
   if (sent === null && TOKEN && chatId) {
@@ -482,7 +487,7 @@ export async function notifyDump({ pair, metrics }) {
     : "";
 
   await sendHTML(
-    `🚨 <b>DUMP DETECTED</b> ${pair}` +
+    `🚨 <b>DUMP DETECTED</b> ${esc(pair)}` +
     priceLine +
     tvlLine +
     `\n→ Closing position`
@@ -492,7 +497,7 @@ export async function notifyDump({ pair, metrics }) {
 export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOut, tx }) {
   if (hasActiveLiveMessage()) return;
   await sendHTML(
-    `🔄 <b>Swapped</b> ${inputSymbol} → ${outputSymbol}\n` +
+    `🔄 <b>Swapped</b> ${esc(inputSymbol)} → ${esc(outputSymbol)}\n` +
     `In: ${amountIn ?? "?"} | Out: ${amountOut ?? "?"}\n` +
     `Tx: <code>${tx?.slice(0, 16)}...</code>`
   );
@@ -501,7 +506,7 @@ export async function notifySwap({ inputSymbol, outputSymbol, amountIn, amountOu
 export async function notifyOutOfRange({ pair, minutesOOR }) {
   if (hasActiveLiveMessage()) return;
   await sendHTML(
-    `⚠️ <b>Out of Range</b> ${pair}\n` +
+    `⚠️ <b>Out of Range</b> ${esc(pair)}\n` +
     `Been OOR for ${minutesOOR} minutes`
   );
 }

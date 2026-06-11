@@ -54,6 +54,37 @@ export function markPositionClosing(addr) { if (addr) _closingPositions.add(addr
 export function unmarkPositionClosing(addr) { if (addr) _closingPositions.delete(addr); }
 export function isPositionClosing(addr) { return addr ? _closingPositions.has(addr) : false; }
 
+// ─── Pending close notification (retry if Telegram failed) ─────────────────────
+export function setPendingCloseNotify(position_address, data) {
+  if (!position_address) return;
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos) return;
+  pos.pending_close_notify = { ...data, _queued_at: Date.now() };
+  save(state);
+}
+
+export function clearPendingCloseNotify(position_address) {
+  if (!position_address) return;
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || !pos.pending_close_notify) return;
+  pos.pending_close_notify = null;
+  save(state);
+}
+
+export function getPendingCloseNotifications(minAgeMs = 10_000) {
+  const state = load();
+  const now = Date.now();
+  const pending = [];
+  for (const [posId, pos] of Object.entries(state.positions)) {
+    if (!pos.closed || !pos.pending_close_notify) continue;
+    if (now - (pos.pending_close_notify._queued_at ?? 0) < minAgeMs) continue;
+    pending.push({ position_address: posId, ...pos.pending_close_notify });
+  }
+  return pending;
+}
+
 // ─── Position Registry ─────────────────────────────────────────
 
 /**

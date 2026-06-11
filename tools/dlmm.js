@@ -23,6 +23,8 @@ import {
   minutesOutOfRange,
   syncOpenPositions,
   isPositionClosing,
+  getPendingCloseNotifications,
+  clearPendingCloseNotify,
 } from "../state.js";
 import { recordPerformance } from "../lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
@@ -1468,6 +1470,19 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
           notifyClose({ pair: pool_name, pnlUsd: last_pnl_usd ?? 0, pnlPct: last_pnl_pct ?? 0, noPnl: !hasPnl, reason: "auto-closed (not found on-chain)" }).catch((e) => log("telegram_warn", `notifyClose auto-sync failed for ${pool_name}: ${e.message}`));
         }
       }
+
+      // Retry any close notifications that failed to send earlier (pos.closed=true but notifyClose failed)
+      const pendingNotify = getPendingCloseNotifications(10_000);
+      if (pendingNotify.length > 0) {
+        const { notifyClose } = await import("../telegram.js");
+        for (const { position_address, pool_name, pnl_usd, pnl_pct, reason } of pendingNotify) {
+          if (isPositionClosing(position_address)) continue;
+          notifyClose({ pair: pool_name, pnlUsd: pnl_usd ?? 0, pnlPct: pnl_pct ?? 0, reason })
+            .then(() => { clearPendingCloseNotify(position_address); })
+            .catch((e) => log("telegram_warn", `pendingCloseNotify retry failed for ${pool_name}: ${e.message}`));
+        }
+      }
+
       _positionsCache = result;
       _positionsCacheAt = Date.now();
     }

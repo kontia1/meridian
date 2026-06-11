@@ -12,7 +12,7 @@ import {
 import { getWalletBalances, swapToken } from "./wallet.js";
 import { studyTopLPers } from "./study.js";
 import { addLesson, clearAllLessons, clearPerformance, removeLessonsByKeyword, getPerformanceHistory, pinLesson, unpinLesson, listLessons } from "../lessons.js";
-import { setPositionInstruction, recordClose, setDeployBaseline, markPositionClosing, unmarkPositionClosing } from "../state.js";
+import { setPositionInstruction, recordClose, setDeployBaseline, markPositionClosing, unmarkPositionClosing, setPendingCloseNotify, clearPendingCloseNotify } from "../state.js";
 import { fetchDumpContext } from "./dump-detector.js";
 
 
@@ -653,7 +653,12 @@ export async function executeTool(name, args) {
         if (args.position_address) {
           recordClose(args.position_address, args.reason ?? "closed");
         }
-        notifyClose({ pair: result.pool_name || args.position_address?.slice(0, 8), pnlUsd: result.pnl_usd ?? 0, pnlPct: result.pnl_pct ?? 0, reason: args.reason ?? null }).catch((e) => log("telegram_warn", `notifyClose failed for ${result.pool_name || args.position_address?.slice(0, 8)}: ${e.message}`));
+        const _closeNotifyPair = result.pool_name || args.position_address?.slice(0, 8);
+        const _closeNotifyData = { pool_name: _closeNotifyPair, pnl_usd: result.pnl_usd ?? 0, pnl_pct: result.pnl_pct ?? 0, reason: args.reason ?? null };
+        if (args.position_address) setPendingCloseNotify(args.position_address, _closeNotifyData);
+        notifyClose({ pair: _closeNotifyPair, pnlUsd: _closeNotifyData.pnl_usd, pnlPct: _closeNotifyData.pnl_pct, reason: _closeNotifyData.reason })
+          .then(() => { if (args.position_address) clearPendingCloseNotify(args.position_address); })
+          .catch((e) => log("telegram_warn", `notifyClose failed for ${_closeNotifyPair}: ${e.message}`));
         // Note low-yield closes in pool memory so screener avoids redeploying
         if (args.reason && args.reason.toLowerCase().includes("yield")) {
           const poolAddr = result.pool || args.pool_address;

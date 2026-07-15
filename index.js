@@ -22,10 +22,12 @@ import {
   editMessageWithButtons,
   answerCallbackQuery,
   notifyOutOfRange,
+  notifyDump,
   isEnabled as telegramEnabled,
   createLiveMessage,
 } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
+import { fetchDumpContext, checkDumpSignals } from "./tools/dump-detector.js";
 import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, confirmPeak, registerExitSignal } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
@@ -149,6 +151,7 @@ function stopCronJobs() {
   for (const task of _cronTasks) task.stop();
   if (_cronTasks._pnlPollInterval) clearInterval(_cronTasks._pnlPollInterval);
   if (_cronTasks._opportunityPollInterval) clearInterval(_cronTasks._opportunityPollInterval);
+  if (_cronTasks._dumpCheckInterval) clearInterval(_cronTasks._dumpCheckInterval);
   _cronTasks = [];
 }
 
@@ -294,18 +297,80 @@ export async function runManagementCycle({ silent = false } = {}) {
     const totalValue = positionData.reduce((s, p) => s + (p.total_value_usd ?? 0), 0);
     const totalUnclaimed = positionData.reduce((s, p) => s + (p.unclaimed_fees_usd ?? 0), 0);
 
+    // Fetch current pool price + TVL for all positions in parallel (for deploy comparison)
+    const poolContextMap = new Map();
+    await Promise.allSettled(
+      positionData.map(async (p) => {
+        const tracked = getTrackedPosition(p.position);
+        const pool = tracked?.pool || p.pool;
+        if (!pool) return;
+        const { poolDetail, usdPrice } = await fetchDumpContext(pool);
+        if (poolDetail) poolContextMap.set(p.position, { poolDetail, usdPrice, tracked: tracked || {} });
+      })
+    );
+
+    const cur = config.management.solMode ? "◎" : "$";
+
     const reportLines = positionData.map((p) => {
       const act = actionMap.get(p.position);
-      const inRange = p.in_range ? "🟢 IN" : `🔴 OOR ${p.minutes_out_of_range ?? 0}m`;
-      const val = config.management.solMode ? `◎${p.total_value_usd ?? "?"}` : `$${p.total_value_usd ?? "?"}`;
-      const unclaimed = config.management.solMode ? `◎${p.unclaimed_fees_usd ?? "?"}` : `$${p.unclaimed_fees_usd ?? "?"}`;
-      const statusLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)" : act.action;
-      let line = `**${p.pair}** | Age: ${p.age_minutes ?? "?"}m | Val: ${val} | Unclaimed: ${unclaimed} | PnL: ${p.pnl_pct ?? "?"}% | Yield: ${p.fee_per_tvl_24h ?? "?"}% | ${inRange} | ${statusLabel}`;
-      if (p.instruction) line += `\nNote: "${p.instruction}"`;
-      if (act.action === "CLOSE" && act.rule === "exit") line += `\n⚡ Trailing TP: ${act.reason}`;
-      if (act.action === "CLOSE" && act.rule && act.rule !== "exit") line += `\nRule ${act.rule}: ${act.reason}`;
-      if (act.action === "CLAIM") line += `\n→ Claiming fees`;
-      return line;
+
+      // Line 1 — pair name only
+      const line1 = `${p.pair}`;
+
+      // Line 2 — age, range status, action
+      const rangeIcon = p.in_range ? "🟢" : "🔴";
+      const rangeLabel = p.in_range ? "in range" : `OOR ${p.minutes_out_of_range ?? 0}m`;
+      const actionLabel = act.action === "INSTRUCTION" ? "HOLD (instruction)"
+        : act.action === "STAY" ? "hold" : act.action;
+      const line2 = `Age ${p.age_minutes ?? "?"}m ${rangeIcon} ${rangeLabel}  →  ${actionLabel}`;
+
+      // Line 3 — val and pnl
+      const pnlSign = (p.pnl_pct ?? 0) >= 0 ? "+" : "";
+      const line3 = `Val ${cur}${p.total_value_usd ?? "?"} | PnL ${pnlSign}${p.pnl_pct ?? "?"}%`;
+
+      // Line 4 — yield and fees
+      const line4 = `Yield ${p.fee_per_tvl_24h ?? "?"}% | Fee ${cur}${p.unclaimed_fees_usd ?? "?"}`;
+
+      // Lines 5–6 — price (USD) and TVL vs deploy
+      const lines56 = [];
+      const ctx = poolContextMap.get(p.position);
+      if (ctx) {
+        const { usdPrice, poolDetail, tracked } = ctx;
+        const pNow    = usdPrice ?? null;
+        const pDeploy = tracked.usd_price_at_deploy ?? null;
+        const tvlNow    = poolDetail.tvl ?? poolDetail.active_tvl ?? null;
+        const tvlDeploy = tracked.tvl_at_deploy ?? null;
+
+        if (pNow != null) {
+          const fmt = pNow < 0.0001 ? pNow.toFixed(8) : pNow < 0.01 ? pNow.toFixed(6) : pNow.toFixed(4);
+          if (pDeploy != null && pDeploy > 0) {
+            const pct = ((pNow - pDeploy) / pDeploy * 100).toFixed(1);
+            const arrow = Number(pct) >= 0 ? "▲" : "▼";
+            const fmtD = pDeploy < 0.0001 ? pDeploy.toFixed(8) : pDeploy < 0.01 ? pDeploy.toFixed(6) : pDeploy.toFixed(4);
+            lines56.push(`Price  $${fmtD} → $${fmt}  ${arrow}${Math.abs(pct)}%`);
+          } else {
+            lines56.push(`Price  $${fmt}`);
+          }
+        }
+        if (tvlNow != null) {
+          if (tvlDeploy != null && tvlDeploy > 0) {
+            const pct = ((tvlNow - tvlDeploy) / tvlDeploy * 100).toFixed(1);
+            const arrow = Number(pct) >= 0 ? "▲" : "▼";
+            lines56.push(`TVL    ${cur}${Math.round(tvlDeploy).toLocaleString()} → ${cur}${Math.round(tvlNow).toLocaleString()}  ${arrow}${Math.abs(pct)}%`);
+          } else {
+            lines56.push(`TVL    ${cur}${Math.round(tvlNow).toLocaleString()}`);
+          }
+        }
+      }
+
+      // Extra lines — notes and action reasons
+      const extras = [];
+      if (p.instruction)                                extras.push(`  📌 "${p.instruction}"`);
+      if (act.action === "CLOSE" && act.rule === "exit") extras.push(`  ⚡ ${act.reason}`);
+      if (act.action === "CLOSE" && act.rule && act.rule !== "exit") extras.push(`  ⚠️ ${act.reason}`);
+      if (act.action === "CLAIM")                        extras.push(`  → claiming fees`);
+
+      return [line1, line2, line3, line4, ...lines56, ...extras].join("\n");
     });
 
     const needsAction = [...actionMap.values()].filter(a => a.action !== "STAY");
@@ -313,9 +378,8 @@ export async function runManagementCycle({ silent = false } = {}) {
       ? needsAction.map(a => a.action === "INSTRUCTION" ? "EVAL instruction" : `${a.action}${a.reason ? ` (${a.reason})` : ""}`).join(", ")
       : "no action";
 
-    const cur = config.management.solMode ? "◎" : "$";
     mgmtReport = reportLines.join("\n\n") +
-      `\n\nSummary: 💼 ${positions.length} positions | ${cur}${totalValue.toFixed(4)} | fees: ${cur}${totalUnclaimed.toFixed(4)} | ${actionSummary}`;
+      `\n\n─────\n${positions.length} pos  ${cur}${totalValue.toFixed(2)} val  ${cur}${totalUnclaimed.toFixed(2)} fees  ${actionSummary}`;
 
     // ── Call LLM only if action needed ──────────────────────────────
     const actionPositions = positionData.filter(p => {
@@ -859,11 +923,52 @@ Summarize the current portfolio health, total fees earned, and performance of al
     }, oppMs);
   }
 
+  // Dump detection — runs independently on its own interval (default 15s)
+  let _dumpCheckBusy = false;
+  const dumpCheckIntervalMs = Math.max(10, config.management.dumpCheckIntervalSec ?? 15) * 1000;
+  const dumpCheckInterval = config.management.dumpDetectionEnabled
+    ? setInterval(async () => {
+        if (_managementBusy || _dumpCheckBusy) return;
+        const openPositions = getTrackedPositions(true);
+        if (openPositions.length === 0) return;
+        _dumpCheckBusy = true;
+        try {
+          for (const trackedPos of openPositions) {
+            const pair = trackedPos.pool_name || trackedPos.pool?.slice(0, 8) || "unknown";
+            const { poolDetail } = await fetchDumpContext(trackedPos.pool);
+            const { isDump, reason, metrics } = checkDumpSignals(
+              trackedPos,
+              poolDetail,
+              config.management
+            );
+            if (!isDump) continue;
+            if (telegramEnabled()) notifyDump({ pair, metrics }).catch(() => {});
+            log("dump_warn", `[${pair}] Closing position immediately — ${trackedPos.position}`);
+            executeTool("close_position", {
+              position_address: trackedPos.position,
+              reason,
+            }).then((result) => {
+              log("dump_warn", `[${pair}] Closed — ${result?.success ? "OK" : JSON.stringify(result)}`);
+            }).catch((e) => {
+              log("cron_error", `Dump close failed [${pair}]: ${e.message}`);
+            });
+          }
+        } finally {
+          _dumpCheckBusy = false;
+        }
+      }, dumpCheckIntervalMs)
+    : null;
+
   _cronTasks = [mgmtTask, screenTask, healthTask, briefingTask, briefingWatchdog];
   // Store interval refs so stopCronJobs can clear them
   _cronTasks._pnlPollInterval = pnlPollInterval;
   _cronTasks._opportunityPollInterval = opportunityPollInterval;
-  log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m${config.opportunity.enabled ? `, opportunity poll every ${config.opportunity.pollIntervalSec}s` : ""}`);
+  _cronTasks._dumpCheckInterval = dumpCheckInterval;
+
+  const dumpStatus = config.management.dumpDetectionEnabled
+    ? `dump check every ${config.management.dumpCheckIntervalSec}s (min signals: ${config.management.dumpMinSignals})`
+    : "dump check disabled";
+  log("cron", `Cycles started — management every ${config.schedule.managementIntervalMin}m, screening every ${config.schedule.screeningIntervalMin}m${config.opportunity.enabled ? `, opportunity poll every ${config.opportunity.pollIntervalSec}s` : ""}, ${dumpStatus}`);
 }
 
 // ═══════════════════════════════════════════

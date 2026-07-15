@@ -1,6 +1,7 @@
 import fs from "fs";
 import { log } from "./logger.js";
 import { repoPath } from "./repo-root.js";
+import { config } from "./config.js";
 
 const USER_CONFIG_PATH = repoPath("user-config.json");
 
@@ -483,12 +484,14 @@ export async function notifyDeploy({ pair, amountSol, position, tx, priceRange, 
   );
 }
 
-export async function notifyClose({ pair, pnlUsd, pnlPct }) {
+export async function notifyClose({ pair, pnlUsd, pnlPct, reason }) {
   if (hasActiveLiveMessage()) return;
+  const cur = config.management.solMode ? "◎" : "$";
   const sign = pnlUsd >= 0 ? "+" : "";
+  const reasonLine = reason ? `\nReason: ${reason}` : "";
   await sendHTML(
     `🔒 <b>Closed</b> ${pair}\n` +
-    `PnL: ${sign}$${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)`
+    `PnL: ${sign}${cur}${(pnlUsd ?? 0).toFixed(2)} (${sign}${(pnlPct ?? 0).toFixed(2)}%)${reasonLine}`
   );
 }
 
@@ -506,6 +509,26 @@ export async function notifyOutOfRange({ pair, minutesOOR }) {
   await sendHTML(
     `⚠️ <b>Out of Range</b> ${pair}\n` +
     `Been OOR for ${minutesOOR} minutes`
+  );
+}
+
+export async function notifyDump({ pair, metrics }) {
+  const fmt6 = (n) => (n != null ? `$${Number(n).toFixed(6)}` : "?");
+  const fmtK = (n) => (n != null ? `$${Math.round(n).toLocaleString()}` : "?");
+  const fmtPct = (n) => (n != null ? `${Number(n).toFixed(1)}%` : "?");
+
+  const priceLine = (metrics.price_at_deploy != null || metrics.price_now != null)
+    ? `\nPrice:  ${fmt6(metrics.price_at_deploy)} → ${fmt6(metrics.price_now)} (${fmtPct(metrics.price_drop_pct)})`
+    : "";
+  const tvlLine = (metrics.tvl_at_deploy != null || metrics.tvl_now != null)
+    ? `\nTVL:    ${fmtK(metrics.tvl_at_deploy)} → ${fmtK(metrics.tvl_now)} (${fmtPct(metrics.tvl_drop_pct)})`
+    : "";
+
+  await sendHTML(
+    `🚨 <b>DUMP DETECTED</b> ${pair}` +
+    priceLine +
+    tvlLine +
+    `\n→ Closing position`
   );
 }
 
